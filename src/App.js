@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  User, 
-  Settings, 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
+import {
+  User,
+  Settings,
+  Play,
+  Pause,
+  RotateCcw,
+  CheckCircle,
+  XCircle,
+  Clock,
   Eye,
   Edit,
   Trash2,
@@ -34,8 +34,8 @@ const RPAPlatform = () => {
   // 模拟登录
   const handleLogin = (username, password) => {
     if (username && password) {
-      setCurrentUser({ 
-        name: username, 
+      setCurrentUser({
+        name: username,
         role: username === 'admin' ? 'admin' : 'user',
         permissions: username === 'admin' ? ['all'] : ['basic']
       });
@@ -106,10 +106,10 @@ const RPAPlatform = () => {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">虎步RPA</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Workflow</h1>
             <p className="text-gray-600">电商自动化管理平台</p>
           </div>
-          
+
           <div>
             <div className="space-y-4">
               <div>
@@ -140,7 +140,7 @@ const RPAPlatform = () => {
               </button>
             </div>
           </div>
-          
+
           <div className="mt-4 text-center text-sm text-gray-500">
             <p>测试账号: admin/admin 或 user/user</p>
           </div>
@@ -286,7 +286,7 @@ const RPAPlatform = () => {
               <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">
                 {workflow.category}
               </span>
-              <button 
+              <button
                 onClick={() => {
                   setSelectedWorkflow(workflow);
                   setShowConfigModal(true);
@@ -318,14 +318,14 @@ const RPAPlatform = () => {
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">配置工作流参数</h3>
-              <button 
+              <button
                 onClick={() => setShowConfigModal(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="mb-4 p-3 bg-gray-50 rounded-lg">
               <p className="font-medium text-gray-900">{selectedWorkflow.title}</p>
               <p className="text-sm text-gray-600">{selectedWorkflow.subtitle}</p>
@@ -342,7 +342,7 @@ const RPAPlatform = () => {
                   placeholder="输入Amazon API Key"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Secret Key</label>
                 <input
@@ -353,7 +353,7 @@ const RPAPlatform = () => {
                   placeholder="输入Secret Key"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">市场</label>
                 <select
@@ -367,7 +367,7 @@ const RPAPlatform = () => {
                   <option value="JP">日本</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">卖家ID</label>
                 <input
@@ -379,9 +379,9 @@ const RPAPlatform = () => {
                 />
               </div>
             </div>
-            
+
             <div className="mt-6 flex space-x-3">
-              <button 
+              <button
                 onClick={() => {
                   // 启动工作流
                   console.log('启动工作流:', selectedWorkflow, config);
@@ -392,7 +392,7 @@ const RPAPlatform = () => {
               >
                 启动工作流
               </button>
-              <button 
+              <button
                 onClick={() => setShowConfigModal(false)}
                 className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors"
               >
@@ -419,11 +419,10 @@ const RPAPlatform = () => {
               <button
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                  selectedCategory === category.id
-                    ? `${category.color} text-white`
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === category.id
+                  ? `${category.color} text-white`
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 {category.name}
               </button>
@@ -462,7 +461,7 @@ const RPAPlatform = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
@@ -539,7 +538,7 @@ const RPAPlatform = () => {
             </div>
           ))}
         </div>
-        
+
         <TaskTable />
       </div>
     );
@@ -559,25 +558,24 @@ const RPAPlatform = () => {
         <div className="p-4">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold">虎</span>
+              <span className="text-white font-bold">W</span>
             </div>
-            {sidebarOpen && <span className="font-semibold">虎步RPA</span>}
+            {sidebarOpen && <span className="font-semibold">Workflow</span>}
           </div>
         </div>
-        
+
         <nav className="flex-1 px-2 space-y-1">
           {menuItems.map((item) => {
             if (item.adminOnly && currentUser?.role !== 'admin') return null;
-            
+
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === item.id 
-                    ? 'bg-gray-800 text-white' 
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                }`}
+                className={`w-full flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === item.id
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`}
               >
                 <item.icon className="w-5 h-5" />
                 {sidebarOpen && <span className="ml-3">{item.name}</span>}
@@ -612,7 +610,7 @@ const RPAPlatform = () => {
   return (
     <div className="h-screen bg-gray-100 flex">
       <Sidebar />
-      
+
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 顶部导航 */}
         <header className="bg-white shadow-sm border-b border-gray-200">
@@ -631,7 +629,7 @@ const RPAPlatform = () => {
                 {activeTab === 'users' && '用户管理'}
               </h1>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <button className="text-gray-500 hover:text-gray-700">
                 <Bell className="w-6 h-6" />
@@ -648,7 +646,7 @@ const RPAPlatform = () => {
             </div>
           </div>
         </header>
-        
+
         {/* 主内容区域 */}
         <main className="flex-1 overflow-auto p-6">
           {renderContent()}
