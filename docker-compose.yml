@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  hubu-rpa-web:
+    build: .
+    container_name: hubu-rpa-platform
+    ports:
+      - "80:80"
+      - "443:443"  # 如果需要HTTPS
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # 如果需要持久化日志
+      - ./logs:/var/log/nginx
+    networks:
+      - rpa-network
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 如果需要数据库服务，可以添加
+  # database:
+  #   image: postgres:15
+  #   container_name: hubu-rpa-db
+  #   environment:
+  #     POSTGRES_DB: rpa_platform
+  #     POSTGRES_USER: rpa_user
+  #     POSTGRES_PASSWORD: rpa_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - rpa-network
+  #   restart: unless-stopped
+
+  # Redis 缓存服务（可选）
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: hubu-rpa-redis
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - rpa-network
+  #   restart: unless-stopped
+
+networks:
+  rpa-network:
+    driver: bridge
+
+# volumes:
+#   postgres_data:
