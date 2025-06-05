@@ -1,0 +1,21 @@
+.
+├── codetree.txt
+├── docker-compose.yml
+├── Dockerfile
+├── fix.sh
+├── nginx.conf
+├── package.json
+├── package-lock.json
+├── postcss.config.js
+├── public
+│   └── index.html
+├── README.md
+├── src
+│   ├── App.js
+│   ├── index.css
+│   └── index.js
+├── start.sh
+├── tailwind.config.js
+└── tree.sh
+
+2 directories, 16 files
