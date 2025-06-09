@@ -1,5 +1,6 @@
 .
-├── codetree.txt
+├── backend-package.json
+├── code_tree.txt
 ├── docker-compose.yml
 ├── Dockerfile
 ├── fix.sh
@@ -10,12 +11,18 @@
 ├── public
 │   └── index.html
 ├── README.md
+├── server.js
 ├── src
 │   ├── App.js
+│   ├── components
+│   │   ├── SimpleVideoWorkflow.js
+│   │   └── VideoWorkflowComponent.js
 │   ├── index.css
 │   └── index.js
 ├── start.sh
 ├── tailwind.config.js
+├── temp
+├── test-automation-path.js
 └── tree.sh
 
-2 directories, 16 files
+4 directories, 21 files
