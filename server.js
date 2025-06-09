@@ -1,13 +1,18 @@
-// server.js - RPA Platform 后端服务器
+// server.js - RPA Platform 后端服务器 (完整版)
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const fetch = require('node-fetch'); // 确保已安装: npm install node-fetch@2
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Electron HTTP API 配置
+const ELECTRON_API_PORT = 9528; // 与 Electron 中的端口保持一致
+const ELECTRON_API_BASE = `http://localhost:${ELECTRON_API_PORT}`;
 
 // 中间件
 app.use(cors());
@@ -73,6 +78,88 @@ const upload = multer({
 
 // 存储活跃的工作流执行
 const activeWorkflows = new Map();
+
+// ============ Electron API 集成函数 ============
+
+// 检查 Electron HTTP API 是否可用
+async function checkElectronApiAvailability() {
+    try {
+        const response = await fetch(`${ELECTRON_API_BASE}/api/health`, {
+            method: 'GET',
+            timeout: 3000
+        });
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
+// 从 Electron HTTP API 获取浏览器实例
+async function getBrowserInstancesFromElectron() {
+    try {
+        console.log('[BrowserAPI] 🔗 Calling Electron HTTP API...');
+
+        const response = await fetch(`${ELECTRON_API_BASE}/api/browsers`, {
+            method: 'GET',
+            timeout: 5000
+        });
+
+        if (!response.ok) {
+            throw new Error(`Electron API responded with ${response.status}: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Electron API returned unsuccessful response');
+        }
+
+        console.log(`[BrowserAPI] ✅ Successfully got ${result.browsers.length} browsers from Electron`);
+        return result.browsers;
+    } catch (error) {
+        console.error('[BrowserAPI] ❌ Failed to get browsers from Electron HTTP API:', error.message);
+        throw error;
+    }
+}
+
+// 获取特定浏览器的详细信息
+async function getBrowserDetailsFromElectron(browserId) {
+    try {
+        const response = await fetch(`${ELECTRON_API_BASE}/api/browser/${browserId}`, {
+            method: 'GET',
+            timeout: 3000
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to get browser details: ${response.status}`);
+        }
+
+        const result = await response.json();
+        return result.success ? result.browser : null;
+    } catch (error) {
+        console.error(`[BrowserAPI] Failed to get browser details for ${browserId}:`, error.message);
+        return null;
+    }
+}
+
+// 获取浏览器标签页信息
+async function getBrowserTabsFromElectron(browserId) {
+    try {
+        const response = await fetch(`${ELECTRON_API_BASE}/api/browser/${browserId}/tabs`, {
+            method: 'GET',
+            timeout: 3000
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to get browser tabs: ${response.status}`);
+        }
+
+        const result = await response.json();
+        return result.success ? result.tabs : [];
+    } catch (error) {
+        console.error(`[BrowserAPI] Failed to get browser tabs for ${browserId}:`, error.message);
+        return [];
+    }
+}
 
 // ============ API 路由 ============
 
@@ -191,10 +278,199 @@ app.get('/api/files', (req, res) => {
     }
 });
 
+// ============ 浏览器实例相关API (通过Electron HTTP API) ============
+
+// 获取可用的浏览器实例
+app.get('/api/browsers', async (req, res) => {
+    try {
+        console.log('[BrowserAPI] 🔍 Fetching browser instances...');
+
+        // 检查 Electron API 可用性
+        const isElectronAvailable = await checkElectronApiAvailability();
+
+        if (!isElectronAvailable) {
+            return res.json({
+                success: true,
+                browsers: [],
+                message: 'Electron HTTP API not available. Please ensure Electron app is running.',
+                timestamp: new Date().toISOString(),
+                source: 'electron-unavailable'
+            });
+        }
+
+        // 从 Electron 获取浏览器实例
+        const browsers = await getBrowserInstancesFromElectron();
+
+        const runningCount = browsers.filter(b => b.status === 'running').length;
+
+        console.log(`[BrowserAPI] ✅ Found ${browsers.length} browser instances (${runningCount} running)`);
+
+        res.json({
+            success: true,
+            browsers,
+            statistics: {
+                total: browsers.length,
+                running: runningCount,
+                stopped: browsers.length - runningCount
+            },
+            timestamp: new Date().toISOString(),
+            source: 'electron-http-api'
+        });
+
+    } catch (error) {
+        console.error('[BrowserAPI] ❌ Failed to get browser instances:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            browsers: [],
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// 获取特定浏览器实例详情
+app.get('/api/browsers/:browserId', async (req, res) => {
+    try {
+        const { browserId } = req.params;
+
+        const isElectronAvailable = await checkElectronApiAvailability();
+        if (!isElectronAvailable) {
+            return res.status(503).json({
+                success: false,
+                error: 'Electron API not available'
+            });
+        }
+
+        const browser = await getBrowserDetailsFromElectron(browserId);
+
+        if (!browser) {
+            return res.status(404).json({
+                success: false,
+                error: 'Browser instance not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            browser
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 获取浏览器实例的标签页
+app.get('/api/browsers/:browserId/tabs', async (req, res) => {
+    try {
+        const { browserId } = req.params;
+
+        const isElectronAvailable = await checkElectronApiAvailability();
+        if (!isElectronAvailable) {
+            return res.status(503).json({
+                success: false,
+                error: 'Electron API not available'
+            });
+        }
+
+        const tabs = await getBrowserTabsFromElectron(browserId);
+
+        res.json({
+            success: true,
+            browserId,
+            tabs
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 刷新浏览器实例状态
+app.post('/api/browsers/refresh', async (req, res) => {
+    try {
+        console.log('[BrowserAPI] 🔄 Refreshing browser instances...');
+
+        const isElectronAvailable = await checkElectronApiAvailability();
+        if (!isElectronAvailable) {
+            return res.status(503).json({
+                success: false,
+                error: 'Electron API not available'
+            });
+        }
+
+        // 调用 Electron API 的刷新接口
+        const response = await fetch(`${ELECTRON_API_BASE}/api/browsers/refresh`, {
+            method: 'POST',
+            timeout: 5000
+        });
+
+        if (!response.ok) {
+            throw new Error(`Electron refresh API failed: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        res.json({
+            success: true,
+            message: 'Browser instances refreshed via Electron API',
+            electronResponse: result,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 检查 Electron API 状态的接口
+app.get('/api/electron/status', async (req, res) => {
+    try {
+        const isAvailable = await checkElectronApiAvailability();
+
+        if (isAvailable) {
+            const response = await fetch(`${ELECTRON_API_BASE}/api/health`);
+            const healthData = await response.json();
+
+            res.json({
+                success: true,
+                available: true,
+                electronApi: healthData,
+                endpoint: ELECTRON_API_BASE
+            });
+        } else {
+            res.json({
+                success: true,
+                available: false,
+                message: 'Electron HTTP API is not responding',
+                endpoint: ELECTRON_API_BASE
+            });
+        }
+    } catch (error) {
+        res.json({
+            success: false,
+            available: false,
+            error: error.message,
+            endpoint: ELECTRON_API_BASE
+        });
+    }
+});
+
+// ============ 工作流执行相关API ============
+
 // 执行工作流
 app.post('/api/workflow/execute', async (req, res) => {
     try {
-        const { workflowType, content, template, account, debugPort = 9225 } = req.body;
+        const { workflowType, content, template, account, debugPort = 9711 } = req.body;
 
         console.log('[Workflow] 开始执行工作流:', {
             type: workflowType,
@@ -267,33 +543,6 @@ app.get('/api/workflow/status/:executionId', (req, res) => {
     });
 });
 
-// 获取可用的浏览器实例（模拟）
-app.get('/api/browsers', (req, res) => {
-    // 这里模拟检测可用的浏览器实例
-    // 实际项目中可以通过检测Chrome调试端口来获取
-    const browsers = [
-        {
-            id: 'browser_9225',
-            name: '浏览器实例 1',
-            debugPort: 9225,
-            status: 'running',
-            url: 'about:blank'
-        },
-        {
-            id: 'browser_9226',
-            name: '浏览器实例 2',
-            debugPort: 9226,
-            status: 'idle',
-            url: null
-        }
-    ];
-
-    res.json({
-        success: true,
-        browsers
-    });
-});
-
 // ============ 工具函数 ============
 
 // 创建临时配置文件
@@ -327,16 +576,55 @@ async function createTempConfigFiles(executionId, config) {
 // 执行自动化工作流
 function executeAutomationWorkflow({ executionId, workflowType, debugPort, tempConfig }) {
     return new Promise((resolve, reject) => {
-        // 修正：使用正确的 automation 路径
+        // 🔧 修复：使用正确的 automation 路径
+        // 从当前 rpa-platform 目录找到 electron_browser/automation
         const automationPath = path.join(__dirname, '../electron_browser/automation');
         const cliPath = path.join(automationPath, 'cli/automation-cli.js');
 
+        console.log('[Automation] 查找路径:', {
+            currentDir: __dirname,
+            automationPath: automationPath,
+            cliPath: cliPath
+        });
+
+        let finalCliPath = cliPath;
+        let finalAutomationPath = automationPath;
+
         // 检查文件是否存在
         if (!fs.existsSync(cliPath)) {
-            const error = `Automation CLI 不存在: ${cliPath}`;
-            console.error('[Automation]', error);
-            reject(new Error(error));
-            return;
+            // 🔧 尝试其他可能的路径
+            const alternativePaths = [
+                path.join(__dirname, '../automation/cli/automation-cli.js'),
+                path.join(__dirname, '../../automation/cli/automation-cli.js'),
+                path.join(__dirname, '../electron_browser/automation/cli/automation-cli.js'),
+                path.join(process.cwd(), '../automation/cli/automation-cli.js'),
+                path.join(process.cwd(), '../electron_browser/automation/cli/automation-cli.js')
+            ];
+
+            console.log('[Automation] CLI文件不存在，尝试其他路径:');
+            let foundPath = null;
+
+            for (const altPath of alternativePaths) {
+                console.log('[Automation] 检查:', altPath);
+                if (fs.existsSync(altPath)) {
+                    foundPath = altPath;
+                    console.log('[Automation] ✅ 找到CLI文件:', foundPath);
+                    break;
+                }
+            }
+
+            if (!foundPath) {
+                const error = `Automation CLI 不存在，已检查路径:\n${[cliPath, ...alternativePaths].join('\n')}`;
+                console.error('[Automation]', error);
+                reject(new Error(error));
+                return;
+            }
+
+            // 更新找到的路径
+            finalCliPath = foundPath;
+            finalAutomationPath = path.dirname(path.dirname(foundPath));
+        } else {
+            console.log('[Automation] ✅ 找到CLI文件:', cliPath);
         }
 
         const args = [
@@ -348,11 +636,11 @@ function executeAutomationWorkflow({ executionId, workflowType, debugPort, tempC
             '--debug-port', debugPort.toString()
         ];
 
-        console.log('[Automation] 执行命令:', 'node', cliPath, ...args);
-        console.log('[Automation] 工作目录:', automationPath);
+        console.log('[Automation] 执行命令:', 'node', finalCliPath, ...args);
+        console.log('[Automation] 工作目录:', finalAutomationPath);
 
-        const process = spawn('node', [cliPath, ...args], {
-            cwd: automationPath,
+        const process = spawn('node', [finalCliPath, ...args], {
+            cwd: finalAutomationPath,
             stdio: ['pipe', 'pipe', 'pipe']
         });
 
@@ -494,6 +782,7 @@ app.listen(PORT, () => {
     console.log(`📁 上传目录: ${UPLOAD_DIR}`);
     console.log(`📄 临时目录: ${TEMP_DIR}`);
     console.log(`📝 日志目录: ${LOGS_DIR}`);
+    console.log(`🔗 Electron API 端点: ${ELECTRON_API_BASE}`);
 });
 
 // 优雅退出
