@@ -542,6 +542,379 @@ app.get('/api/workflow/status/:executionId', (req, res) => {
         status: workflow
     });
 });
+// ============ 使用说明 ============
+/*
+前端组件现在会通过以下API获取平台配置：
+
+1. GET /api/platforms - 获取所有平台配置
+2. POST /api/platforms/validate - 验证单个平台内容
+3. POST /api/platforms/adapt - 适配内容到单个平台
+4. POST /api/platforms/adapt-multi - 批量适配内容到多个平台
+5. POST /api/workflow/multi-execute - 执行多平台发布工作流
+*/
+
+// 获取平台配置 - 添加到现有路由中
+app.get('/api/platforms', (req, res) => {
+    try {
+        // 动态导入平台配置
+        import('../automation/config/platforms.js').then(({ PLATFORM_CONFIGS, getAvailablePlatforms }) => {
+            const availablePlatforms = getAvailablePlatforms();
+
+            res.json({
+                success: true,
+                platforms: availablePlatforms,
+                configs: PLATFORM_CONFIGS,
+                timestamp: new Date().toISOString()
+            });
+        }).catch(error => {
+            console.error('[PlatformAPI] 加载平台配置失败:', error);
+
+            // 返回基础配置作为后备
+            res.json({
+                success: true,
+                platforms: [
+                    {
+                        id: 'wechat',
+                        name: '微信视频号',
+                        icon: '🎬',
+                        color: 'bg-green-500',
+                        status: 'stable',
+                        fields: {
+                            title: { required: false, maxLength: 16, minLength: 6 },
+                            description: { required: true, maxLength: 500 }
+                        },
+                        features: {
+                            useIframe: true,
+                            needShortTitle: true,
+                            supportLocation: true
+                        }
+                    },
+                    {
+                        id: 'douyin',
+                        name: '抖音',
+                        icon: '🎵',
+                        color: 'bg-black',
+                        status: 'testing',
+                        fields: {
+                            title: { required: true, maxLength: 55 },
+                            description: { required: true, maxLength: 2200 }
+                        },
+                        features: {
+                            needClickUpload: true,
+                            supportHashtags: true
+                        }
+                    }
+                ],
+                fallback: true,
+                timestamp: new Date().toISOString()
+            });
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 验证平台内容 - 新增API
+app.post('/api/platforms/validate', async (req, res) => {
+    try {
+        const { platformId, content } = req.body;
+
+        // 动态导入验证函数
+        const { validatePlatformContent } = await import('../automation/config/platforms.js');
+
+        const validation = validatePlatformContent(platformId, content);
+
+        res.json({
+            success: true,
+            validation,
+            platformId
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 适配内容到平台 - 新增API
+app.post('/api/platforms/adapt', async (req, res) => {
+    try {
+        const { platformId, content } = req.body;
+
+        // 动态导入适配函数
+        const { adaptContentToPlatform } = await import('../automation/config/platforms.js');
+
+        const adaptedContent = adaptContentToPlatform(platformId, content);
+
+        res.json({
+            success: true,
+            adaptedContent,
+            platformId
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 批量适配内容到多个平台 - 新增API
+app.post('/api/platforms/adapt-multi', async (req, res) => {
+    try {
+        const { platforms, content } = req.body;
+
+        // 动态导入函数
+        const { adaptContentToPlatform, validatePlatformContent } = await import('../automation/config/platforms.js');
+
+        const results = platforms.map(platformId => {
+            const adaptedContent = adaptContentToPlatform(platformId, content);
+            const validation = validatePlatformContent(platformId, adaptedContent);
+
+            return {
+                platformId,
+                adaptedContent,
+                validation,
+                warnings: []
+            };
+        });
+
+        res.json({
+            success: true,
+            results,
+            platforms
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 多平台工作流执行 - 新增API
+app.post('/api/workflow/multi-execute', async (req, res) => {
+    try {
+        const { platforms, content, videoFile, browserMapping } = req.body;
+
+        console.log('[MultiWorkflow] 开始多平台执行:', {
+            platforms,
+            videoFile,
+            browserCount: Object.keys(browserMapping).length
+        });
+
+        // 验证必需参数
+        if (!platforms || !Array.isArray(platforms) || platforms.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: '缺少平台参数'
+            });
+        }
+
+        if (!content || !videoFile) {
+            return res.status(400).json({
+                success: false,
+                error: '缺少内容或视频文件参数'
+            });
+        }
+
+        // 检查浏览器映射
+        const missingMappings = platforms.filter(p => !browserMapping[p]);
+        if (missingMappings.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: `缺少浏览器映射: ${missingMappings.join(', ')}`
+            });
+        }
+
+        // 生成执行ID
+        const executionId = `multi_exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // 为每个平台创建单独的任务
+        const platformTasks = platforms.map(async (platformId) => {
+            try {
+                console.log(`[MultiWorkflow] 开始执行平台: ${platformId}`);
+
+                // 获取平台配置
+                const { getPlatformConfig, adaptContentToPlatform } = await import('../automation/config/platforms.js');
+                const platformConfig = getPlatformConfig(platformId);
+
+                if (!platformConfig) {
+                    throw new Error(`平台配置不存在: ${platformId}`);
+                }
+
+                // 适配内容
+                const adaptedContent = adaptContentToPlatform(platformId, content);
+
+                // 创建平台特定的临时配置
+                const platformTempConfig = await createTempConfigFiles(`${executionId}_${platformId}`, {
+                    workflowType: 'video',
+                    content: {
+                        ...adaptedContent,
+                        videoFile: videoFile
+                    },
+                    template: getDefaultTemplate('video'),
+                    account: {
+                        id: browserMapping[platformId],
+                        name: `${platformConfig.name}账号`,
+                        platform: platformId
+                    }
+                });
+
+                // 执行单平台工作流
+                const result = await executeAutomationWorkflow({
+                    executionId: `${executionId}_${platformId}`,
+                    workflowType: 'video',
+                    platform: platformId,
+                    debugPort: 9225, // 可以从browserMapping中获取具体端口
+                    tempConfig: platformTempConfig
+                });
+
+                // 清理临时文件
+                cleanupTempFiles(platformTempConfig);
+
+                return {
+                    platform: platformId,
+                    platformName: platformConfig.name,
+                    success: true,
+                    result,
+                    adaptedContent
+                };
+
+            } catch (error) {
+                console.error(`[MultiWorkflow] 平台 ${platformId} 执行失败:`, error.message);
+                return {
+                    platform: platformId,
+                    platformName: platformId,
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
+
+        // 并行执行所有平台任务
+        console.log(`[MultiWorkflow] 开始并行执行 ${platforms.length} 个平台...`);
+        const results = await Promise.allSettled(platformTasks);
+
+        // 处理结果
+        const processedResults = results.map((result, index) => {
+            if (result.status === 'fulfilled') {
+                return result.value;
+            } else {
+                return {
+                    platform: platforms[index],
+                    success: false,
+                    error: result.reason?.message || String(result.reason)
+                };
+            }
+        });
+
+        const successCount = processedResults.filter(r => r.success).length;
+        const failureCount = processedResults.length - successCount;
+
+        console.log(`[MultiWorkflow] 多平台执行完成: 成功 ${successCount}, 失败 ${failureCount}`);
+
+        res.json({
+            success: successCount > 0,
+            executionId,
+            totalPlatforms: platforms.length,
+            successCount,
+            failureCount,
+            results: processedResults,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[MultiWorkflow] 执行失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ============ 工具函数扩展 ============
+
+// 扩展现有的 executeAutomationWorkflow 函数以支持平台参数
+function executeAutomationWorkflowWithPlatform({ executionId, workflowType, platform, debugPort, tempConfig }) {
+    return new Promise((resolve, reject) => {
+        // 修改 CLI 路径查找逻辑
+        const automationPath = path.join(__dirname, '../automation');
+        const cliPath = path.join(automationPath, 'cli/automation-cli.js');
+
+        // 检查新的多平台CLI是否存在
+        let finalCliPath = cliPath;
+        if (fs.existsSync(path.join(automationPath, 'cli/multi-platform-cli.js'))) {
+            finalCliPath = path.join(automationPath, 'cli/multi-platform-cli.js');
+        }
+
+        const args = [
+            'publish',
+            '-t', workflowType,
+            '-c', tempConfig.contentFile,
+            '-a', tempConfig.accountFile,
+            '-p', tempConfig.templateFile,
+            '--debug-port', debugPort.toString()
+        ];
+
+        // 如果支持平台参数，添加平台ID
+        if (platform) {
+            args.push('--platform', platform);
+        }
+
+        console.log('[Automation] 执行多平台命令:', 'node', finalCliPath, ...args);
+
+        const process = spawn('node', [finalCliPath, ...args], {
+            cwd: automationPath,
+            stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let output = '';
+        let errorOutput = '';
+
+        process.stdout.on('data', (data) => {
+            const text = data.toString();
+            output += text;
+            console.log(`[Automation-${platform || workflowType}-${executionId}]`, text);
+        });
+
+        process.stderr.on('data', (data) => {
+            const text = data.toString();
+            errorOutput += text;
+            console.error(`[Automation-Error-${platform || workflowType}-${executionId}]`, text);
+        });
+
+        process.on('close', (code) => {
+            if (code === 0) {
+                console.log(`[Automation] 平台 ${platform} 工作流 ${executionId} 执行成功`);
+                resolve({
+                    success: true,
+                    executionId,
+                    platform,
+                    output,
+                    workflowType,
+                    exitCode: code
+                });
+            } else {
+                console.error(`[Automation] 平台 ${platform} 工作流 ${executionId} 执行失败，退出码: ${code}`);
+                reject(new Error(`平台 ${platform} 工作流执行失败，退出码: ${code}\n${errorOutput}`));
+            }
+        });
+
+        process.on('error', (error) => {
+            console.error(`[Automation] 平台 ${platform} 进程启动失败:`, error);
+            reject(error);
+        });
+    });
+}
+
 
 // ============ 工具函数 ============
 
