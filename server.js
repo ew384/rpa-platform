@@ -557,7 +557,7 @@ app.get('/api/workflow/status/:executionId', (req, res) => {
 app.get('/api/platforms', (req, res) => {
     try {
         // 动态导入平台配置
-        import('../automation/config/platforms.js').then(({ PLATFORM_CONFIGS, getAvailablePlatforms }) => {
+        import('../electron_browser/automation/config/platforms.js').then(({ PLATFORM_CONFIGS, getAvailablePlatforms }) => {
             const availablePlatforms = getAvailablePlatforms();
 
             res.json({
@@ -623,7 +623,7 @@ app.post('/api/platforms/validate', async (req, res) => {
         const { platformId, content } = req.body;
 
         // 动态导入验证函数
-        const { validatePlatformContent } = await import('../automation/config/platforms.js');
+        const { validatePlatformContent } = await import('../electron_browser/automation/config/platforms.js');
 
         const validation = validatePlatformContent(platformId, content);
 
@@ -647,7 +647,7 @@ app.post('/api/platforms/adapt', async (req, res) => {
         const { platformId, content } = req.body;
 
         // 动态导入适配函数
-        const { adaptContentToPlatform } = await import('../automation/config/platforms.js');
+        const { adaptContentToPlatform } = await import('../electron_browser/automation/config/platforms.js');
 
         const adaptedContent = adaptContentToPlatform(platformId, content);
 
@@ -743,7 +743,7 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
                 console.log(`[MultiWorkflow] 开始执行平台: ${platformId}`);
 
                 // 获取平台配置
-                const { getPlatformConfig, adaptContentToPlatform } = await import('../automation/config/platforms.js');
+                const { getPlatformConfig, adaptContentToPlatform } = await import('../electron_browser/automation/config/platforms.js');
                 const platformConfig = getPlatformConfig(platformId);
 
                 if (!platformConfig) {
