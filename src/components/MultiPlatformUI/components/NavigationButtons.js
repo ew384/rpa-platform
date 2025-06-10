@@ -59,7 +59,7 @@ const NavigationButtons = ({
             setExecutionResults([]);
 
             const publishData = {
-                workflowType: 'multi-platform-video',
+                workflowType: 'video',
                 videoFile: videoFile.filename || videoFile.name,
                 platforms: selectedPlatforms,
                 content: contentForm,

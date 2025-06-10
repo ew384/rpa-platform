@@ -15,7 +15,6 @@
 │   ├── App.js
 │   ├── components
 │   │   ├── backup
-│   │   │   ├── MultiPlatformUI.js
 │   │   │   ├── SimpleVideoWorkflow.js
 │   │   │   └── VideoWorkflowComponent.js
 │   │   └── MultiPlatformUI
@@ -36,8 +35,7 @@
 │   └── index.js
 ├── start.sh
 ├── tailwind.config.js
-├── temp
 ├── test-automation-path.js
 └── tree.sh
 
-8 directories, 32 files
+7 directories, 31 files

@@ -525,18 +525,23 @@ app.post('/api/workflow/execute', async (req, res) => {
         });
     }
 });
-
-// 多平台执行工作流 - 简化版本
-// 多平台执行工作流
 app.post('/api/workflow/multi-execute', async (req, res) => {
     try {
+        console.log('[MultiWorkflow] 🔍 收到多平台发布请求');
+        console.log('[MultiWorkflow] 📋 请求体:', JSON.stringify(req.body, null, 2));
+
         const {
             workflowType = 'video',
             platforms = [],
             content = {},
             template = {},
-            platformMappings = {}
+            platformMappings = {},
+            videoFile  // 🔧 从根级别提取 videoFile
         } = req.body;
+
+        console.log('[MultiWorkflow] 📁 内容对象:', JSON.stringify(content, null, 2));
+        console.log('[MultiWorkflow] 🎬 根级别视频文件:', videoFile);
+        console.log('[MultiWorkflow] 🎬 content中的视频文件:', content.videoFile);
 
         if (!platforms || platforms.length === 0) {
             return res.status(400).json({
@@ -545,15 +550,80 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
             });
         }
 
+        // 🔧 修复：统一处理 videoFile，优先使用根级别的 videoFile
+        let videoFilePath = null;
+        const sourceVideoFile = videoFile || content.videoFile;
+
+        if (sourceVideoFile) {
+            console.log('[MultiWorkflow] 🔍 使用视频文件:', sourceVideoFile);
+
+            if (!path.isAbsolute(sourceVideoFile)) {
+                videoFilePath = path.join(UPLOAD_DIR, 'videos', sourceVideoFile);
+                console.log('[MultiWorkflow] 🔄 转换为绝对路径:', videoFilePath);
+            } else {
+                videoFilePath = sourceVideoFile;
+                console.log('[MultiWorkflow] ✅ 已是绝对路径:', videoFilePath);
+            }
+
+            // 验证文件是否存在
+            const fileExists = fs.existsSync(videoFilePath);
+            console.log('[MultiWorkflow] 📁 文件存在检查:', fileExists, '路径:', videoFilePath);
+
+            if (!fileExists) {
+                console.error('[MultiWorkflow] ❌ 文件不存在:', videoFilePath);
+
+                // 列出目录内容进行调试
+                const videosDir = path.join(UPLOAD_DIR, 'videos');
+                if (fs.existsSync(videosDir)) {
+                    const files = fs.readdirSync(videosDir);
+                    console.log('[MultiWorkflow] 📂 videos目录文件列表:', files);
+                } else {
+                    console.log('[MultiWorkflow] ❌ videos目录不存在:', videosDir);
+                }
+
+                return res.status(400).json({
+                    success: false,
+                    error: `视频文件不存在: ${videoFilePath}`
+                });
+            }
+        } else {
+            console.log('[MultiWorkflow] ⚠️ 没有提供视频文件');
+            return res.status(400).json({
+                success: false,
+                error: '缺少视频文件'
+            });
+        }
+
         const executionId = `multi_exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('[MultiWorkflow] 🆔 执行ID:', executionId);
+
         const results = [];
 
         // 串行执行每个平台
         for (const platformId of platforms) {
             try {
-                const mapping = platformMappings[platformId] || {};
-                const result = await executeSinglePlatform(platformId, workflowType, content, template, mapping, executionId);
+                console.log(`[MultiWorkflow] 🚀 开始执行平台: ${platformId}`);
 
+                const mapping = platformMappings[platformId] || {};
+                console.log(`[MultiWorkflow] 🗺️ 平台映射配置:`, JSON.stringify(mapping, null, 2));
+
+                // 🔧 修复：确保 videoFile 在 content 对象中
+                const contentWithFile = {
+                    ...content,
+                    videoFile: videoFilePath  // 将 videoFile 放入 content 对象中
+                };
+                console.log(`[MultiWorkflow] 📦 传递给平台的内容:`, JSON.stringify(contentWithFile, null, 2));
+
+                const result = await executeSinglePlatform(
+                    platformId,
+                    workflowType,
+                    contentWithFile,  // 传递包含 videoFile 的 content
+                    template,
+                    mapping,
+                    executionId
+                );
+
+                console.log(`[MultiWorkflow] ✅ 平台 ${platformId} 执行成功`);
                 results.push({
                     platform: platformId,
                     platformName: getPlatformName(platformId),
@@ -562,7 +632,8 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
                 });
 
             } catch (error) {
-                console.error(`[MultiWorkflow] 平台 ${platformId} 执行失败:`, error);
+                console.error(`[MultiWorkflow] ❌ 平台 ${platformId} 执行失败:`, error);
+                console.error(`[MultiWorkflow] 📋 错误详情:`, error.stack);
 
                 results.push({
                     platform: platformId,
@@ -574,6 +645,7 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
         }
 
         const successCount = results.filter(r => r.success).length;
+        console.log(`[MultiWorkflow] 📊 执行完成 - 成功: ${successCount}, 失败: ${results.length - successCount}`);
 
         res.json({
             success: true,
@@ -588,6 +660,8 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
         });
 
     } catch (error) {
+        console.error('[MultiWorkflow] ❌ 多平台执行失败:', error);
+        console.error('[MultiWorkflow] 📋 错误堆栈:', error.stack);
         res.status(500).json({
             success: false,
             error: error.message
@@ -595,6 +669,120 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
     }
 });
 
+async function executeSinglePlatform(platformId, workflowType, content, template, mapping, baseExecutionId) {
+    console.log(`[SinglePlatform] 🎯 执行单平台: ${platformId}`);
+    console.log(`[SinglePlatform] 📝 工作流类型: ${workflowType}`);
+    console.log(`[SinglePlatform] 📦 内容对象:`, JSON.stringify(content, null, 2));
+    console.log(`[SinglePlatform] 🎬 视频文件路径:`, content.videoFile);
+
+    const account = mapping.account || { id: `${platformId}_default`, name: `${platformId}默认账号` };
+    const debugPort = mapping.debugPort || 9711;
+
+    console.log(`[SinglePlatform] 👤 账号配置:`, JSON.stringify(account, null, 2));
+    console.log(`[SinglePlatform] 🔌 调试端口: ${debugPort}`);
+
+    // 创建临时配置文件
+    const tempConfig = await createTempConfigFiles(`${baseExecutionId}_${platformId}`, {
+        workflowType,
+        content,
+        template: template || getDefaultTemplate(workflowType),
+        account
+    });
+
+    console.log(`[SinglePlatform] 📁 临时配置文件:`, JSON.stringify(tempConfig, null, 2));
+
+    // 验证临时配置文件内容
+    try {
+        const contentJson = JSON.parse(fs.readFileSync(tempConfig.contentFile, 'utf8'));
+        console.log(`[SinglePlatform] 📋 content.json内容:`, JSON.stringify(contentJson, null, 2));
+        console.log(`[SinglePlatform] 🎬 content.json中的videoFile:`, contentJson.videoFile);
+    } catch (error) {
+        console.error(`[SinglePlatform] ❌ 读取content.json失败:`, error);
+    }
+
+    // 启动自动化进程
+    const automationResult = await executeAutomationWorkflow({
+        executionId: `${baseExecutionId}_${platformId}`,
+        workflowType,
+        debugPort,
+        tempConfig
+    });
+
+    // 清理临时文件
+    cleanupTempFiles(tempConfig);
+
+    return {
+        result: automationResult,
+        message: '发布成功',
+        debugPort
+    };
+}
+
+// 3. 修改 createTempConfigFiles 函数，添加详细日志
+async function createTempConfigFiles(executionId, config) {
+    console.log(`[TempConfig] 🗂️ 创建临时配置文件: ${executionId}`);
+    console.log(`[TempConfig] 📦 配置对象:`, JSON.stringify(config, null, 2));
+
+    const tempDir = path.join(TEMP_DIR, executionId);
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+        console.log(`[TempConfig] 📁 创建临时目录: ${tempDir}`);
+    }
+
+    const files = {
+        contentFile: path.join(tempDir, 'content.json'),
+        templateFile: path.join(tempDir, 'template.json'),
+        accountFile: path.join(tempDir, 'account.json')
+    };
+
+    console.log(`[TempConfig] 📋 文件路径:`, JSON.stringify(files, null, 2));
+
+    // 处理视频文件路径
+    if (config.content.videoFile) {
+        console.log(`[TempConfig] 🎬 原始视频文件路径: ${config.content.videoFile}`);
+
+        if (!path.isAbsolute(config.content.videoFile)) {
+            const videoPath = path.join(UPLOAD_DIR, 'videos', config.content.videoFile);
+            console.log(`[TempConfig] 🔄 转换为绝对路径: ${videoPath}`);
+
+            if (fs.existsSync(videoPath)) {
+                config.content.videoFile = videoPath;
+                console.log(`[TempConfig] ✅ 文件存在，使用路径: ${config.content.videoFile}`);
+            } else {
+                console.error(`[TempConfig] ❌ 文件不存在: ${videoPath}`);
+
+                // 列出可用文件
+                const videosDir = path.join(UPLOAD_DIR, 'videos');
+                if (fs.existsSync(videosDir)) {
+                    const files = fs.readdirSync(videosDir);
+                    console.log(`[TempConfig] 📂 可用文件:`, files);
+                }
+
+                throw new Error(`视频文件不存在: ${videoPath}`);
+            }
+        } else {
+            // 验证绝对路径文件是否存在
+            if (!fs.existsSync(config.content.videoFile)) {
+                console.error(`[TempConfig] ❌ 绝对路径文件不存在: ${config.content.videoFile}`);
+                throw new Error(`视频文件不存在: ${config.content.videoFile}`);
+            }
+            console.log(`[TempConfig] ✅ 绝对路径文件存在: ${config.content.videoFile}`);
+        }
+    } else {
+        console.log(`[TempConfig] ⚠️ 没有提供视频文件路径`);
+    }
+
+    console.log(`[TempConfig] 💾 最终内容配置:`, JSON.stringify(config.content, null, 2));
+
+    // 写入文件
+    fs.writeFileSync(files.contentFile, JSON.stringify(config.content, null, 2));
+    fs.writeFileSync(files.templateFile, JSON.stringify(config.template, null, 2));
+    fs.writeFileSync(files.accountFile, JSON.stringify(config.account, null, 2));
+
+    console.log(`[TempConfig] ✅ 临时配置文件创建完成`);
+
+    return files;
+}
 // 执行单个平台的函数
 async function executeSinglePlatform(platformId, workflowType, content, template, mapping, baseExecutionId) {
     const account = mapping.account || { id: `${platformId}_default`, name: `${platformId}默认账号` };
