@@ -3,7 +3,6 @@
 ├── code_tree.txt
 ├── docker-compose.yml
 ├── Dockerfile
-├── fix.sh
 ├── nginx.conf
 ├── package.json
 ├── package-lock.json
@@ -15,8 +14,24 @@
 ├── src
 │   ├── App.js
 │   ├── components
-│   │   ├── SimpleVideoWorkflow.js
-│   │   └── VideoWorkflowComponent.js
+│   │   ├── backup
+│   │   │   ├── MultiPlatformUI.js
+│   │   │   ├── SimpleVideoWorkflow.js
+│   │   │   └── VideoWorkflowComponent.js
+│   │   └── MultiPlatformUI
+│   │       ├── components
+│   │       │   ├── BrowserMappingStep.js
+│   │       │   ├── ContentFormStep.js
+│   │       │   ├── ExecutionStep.js
+│   │       │   ├── FileUploadStep.js
+│   │       │   ├── NavigationButtons.js
+│   │       │   ├── PlatformSelectionStep.js
+│   │       │   ├── StatusToasts.js
+│   │       │   └── StepIndicator.js
+│   │       ├── hooks
+│   │       │   ├── useAPI.js
+│   │       │   └── useMultiPlatformState.js
+│   │       └── index.js
 │   ├── index.css
 │   └── index.js
 ├── start.sh
@@ -25,4 +40,4 @@
 ├── test-automation-path.js
 └── tree.sh
 
-4 directories, 21 files
+8 directories, 32 files
