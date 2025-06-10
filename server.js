@@ -163,15 +163,16 @@ async function getBrowserTabsFromElectron(browserId) {
 
 // ============ API 路由 ============
 
-// 健康检查
-app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        service: 'RPA Platform Backend'
-    });
-});
+// ============ 使用说明 ============
+/*
+前端组件现在会通过以下API获取平台配置：
 
+1. GET /api/platforms - 获取所有平台配置
+2. POST /api/platforms/validate - 验证单个平台内容
+3. POST /api/platforms/adapt - 适配内容到单个平台
+4. POST /api/platforms/adapt-multi - 批量适配内容到多个平台
+5. POST /api/workflow/multi-execute - 执行多平台发布工作流
+*/
 // 获取可用的工作流类型
 app.get('/api/workflows', (req, res) => {
     res.json({
@@ -525,6 +526,206 @@ app.post('/api/workflow/execute', async (req, res) => {
     }
 });
 
+// 多平台执行工作流 - 简化版本
+// 多平台执行工作流
+app.post('/api/workflow/multi-execute', async (req, res) => {
+    try {
+        const {
+            workflowType = 'video',
+            platforms = [],
+            content = {},
+            template = {},
+            platformMappings = {}
+        } = req.body;
+
+        if (!platforms || platforms.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: '缺少目标平台列表'
+            });
+        }
+
+        const executionId = `multi_exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const results = [];
+
+        // 串行执行每个平台
+        for (const platformId of platforms) {
+            try {
+                const mapping = platformMappings[platformId] || {};
+                const result = await executeSinglePlatform(platformId, workflowType, content, template, mapping, executionId);
+
+                results.push({
+                    platform: platformId,
+                    platformName: getPlatformName(platformId),
+                    success: true,
+                    ...result
+                });
+
+            } catch (error) {
+                console.error(`[MultiWorkflow] 平台 ${platformId} 执行失败:`, error);
+
+                results.push({
+                    platform: platformId,
+                    platformName: getPlatformName(platformId),
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        const successCount = results.filter(r => r.success).length;
+
+        res.json({
+            success: true,
+            executionId,
+            results,
+            summary: {
+                totalPlatforms: platforms.length,
+                successCount,
+                failureCount: platforms.length - successCount,
+                successRate: (successCount / platforms.length * 100).toFixed(1)
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 执行单个平台的函数
+async function executeSinglePlatform(platformId, workflowType, content, template, mapping, baseExecutionId) {
+    const account = mapping.account || { id: `${platformId}_default`, name: `${platformId}默认账号` };
+    const debugPort = mapping.debugPort || 9711;
+
+    console.log(`[MultiWorkflow] 执行平台 ${platformId}，端口 ${debugPort}`);
+
+    // 创建临时配置文件
+    const tempConfig = await createTempConfigFiles(`${baseExecutionId}_${platformId}`, {
+        workflowType,
+        content,
+        template: template || getDefaultTemplate(workflowType),
+        account
+    });
+
+    // 启动自动化进程
+    const automationResult = await executeAutomationWorkflow({
+        executionId: `${baseExecutionId}_${platformId}`,
+        workflowType,
+        debugPort,
+        tempConfig
+    });
+
+    // 清理临时文件
+    cleanupTempFiles(tempConfig);
+
+    return {
+        result: automationResult,
+        message: '发布成功',
+        debugPort
+    };
+}
+
+function getPlatformName(platformId) {
+    const names = {
+        'wechat': '微信视频号',
+        'douyin': '抖音',
+        'xiaohongshu': '小红书',
+        'kuaishou': '快手'
+    };
+    return names[platformId] || platformId;
+}
+
+
+// 🔧 修改现有的执行函数，支持平台参数
+function executeAutomationWorkflow({ executionId, workflowType, debugPort, tempConfig, platform = 'wechat' }) {
+    return new Promise((resolve, reject) => {
+        // 🔧 修复：使用正确的 automation 路径查找逻辑
+        const automationPath = findAutomationPath();
+
+        if (!automationPath) {
+            reject(new Error('找不到 automation CLI 工具'));
+            return;
+        }
+
+        const finalAutomationPath = path.dirname(path.dirname(automationPath));
+
+        const args = [
+            'publish',
+            '-t', workflowType,
+            '-c', tempConfig.contentFile,
+            '-a', tempConfig.accountFile,
+            '-p', tempConfig.templateFile,
+            '--platform', platform,  // 🔧 添加平台参数
+            '--debug-port', debugPort.toString()
+        ];
+
+        console.log(`[Automation-${platform}] 执行命令:`, 'node', automationPath, ...args);
+
+        const process = spawn('node', [automationPath, ...args], {
+            cwd: finalAutomationPath,
+            stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let output = '';
+        let errorOutput = '';
+
+        process.stdout.on('data', (data) => {
+            const text = data.toString();
+            output += text;
+            console.log(`[Automation-${platform}-${executionId}]`, text);
+        });
+
+        process.stderr.on('data', (data) => {
+            const text = data.toString();
+            errorOutput += text;
+            console.error(`[Automation-Error-${platform}-${executionId}]`, text);
+        });
+
+        process.on('close', (code) => {
+            if (code === 0) {
+                console.log(`[Automation] 平台 ${platform} 执行成功`);
+                resolve({
+                    success: true,
+                    executionId,
+                    platform,
+                    output,
+                    workflowType,
+                    exitCode: code,
+                    message: '发布成功'
+                });
+            } else {
+                console.error(`[Automation] 平台 ${platform} 执行失败，退出码: ${code}`);
+                reject(new Error(`平台 ${platform} 执行失败，退出码: ${code}\n${errorOutput}`));
+            }
+        });
+
+        process.on('error', (error) => {
+            console.error(`[Automation] 平台 ${platform} 进程启动失败:`, error);
+            reject(error);
+        });
+    });
+}
+
+
+function findAutomationPath() {
+    const possiblePaths = [
+        path.join(__dirname, '../electron_browser/automation/cli/automation-cli.js'),
+        path.join(__dirname, '../automation/cli/automation-cli.js'),
+        path.join(__dirname, '../../automation/cli/automation-cli.js'),
+        path.join(process.cwd(), '../automation/cli/automation-cli.js'),
+        path.join(process.cwd(), '../electron_browser/automation/cli/automation-cli.js')
+    ];
+
+    for (const testPath of possiblePaths) {
+        if (fs.existsSync(testPath)) {
+            return testPath;
+        }
+    }
+    return null;
+}
 // 获取工作流执行状态
 app.get('/api/workflow/status/:executionId', (req, res) => {
     const { executionId } = req.params;
@@ -542,18 +743,7 @@ app.get('/api/workflow/status/:executionId', (req, res) => {
         status: workflow
     });
 });
-// ============ 使用说明 ============
-/*
-前端组件现在会通过以下API获取平台配置：
 
-1. GET /api/platforms - 获取所有平台配置
-2. POST /api/platforms/validate - 验证单个平台内容
-3. POST /api/platforms/adapt - 适配内容到单个平台
-4. POST /api/platforms/adapt-multi - 批量适配内容到多个平台
-5. POST /api/workflow/multi-execute - 执行多平台发布工作流
-*/
-// 在 server.js 中修复平台配置接口
-// 替换现有的 app.get('/api/platforms') 路由
 
 app.get('/api/platforms', (req, res) => {
     try {
@@ -745,7 +935,66 @@ app.post('/api/platforms/adapt-multi', async (req, res) => {
         });
     }
 });
+// 健康检查 - 具体路由
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        service: 'RPA Platform Backend',
+        version: '1.0.0',
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
 
+// ============ 修复：添加根API路径 ============
+app.get('/api', (req, res) => {
+    res.json({
+        success: true,
+        name: 'RPA Platform API',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        service: 'RPA Platform Backend',
+        endpoints: {
+            system: {
+                root: 'GET /api',
+                health: 'GET /api/health',
+                status: 'GET /api/status'
+            },
+            platforms: {
+                list: 'GET /api/platforms',
+                validate: 'POST /api/platforms/validate',
+                adapt: 'POST /api/platforms/adapt',
+                adaptMulti: 'POST /api/platforms/adapt-multi'
+            },
+            browsers: {
+                list: 'GET /api/browsers',
+                details: 'GET /api/browsers/:id',
+                tabs: 'GET /api/browsers/:id/tabs',
+                refresh: 'POST /api/browsers/refresh'
+            },
+            files: {
+                list: 'GET /api/files',
+                upload: 'POST /api/upload'
+            },
+            workflows: {
+                list: 'GET /api/workflows',
+                execute: 'POST /api/workflow/execute',
+                status: 'GET /api/workflow/status/:id',
+                multiExecute: 'POST /api/workflow/multi-execute'
+            },
+            electron: {
+                status: 'GET /api/electron/status'
+            }
+        },
+        statistics: {
+            activeWorkflows: activeWorkflows.size,
+            uploadDirectory: UPLOAD_DIR,
+            electronEndpoint: ELECTRON_API_BASE
+        }
+    });
+});
 // ============ 辅助函数 ============
 
 function validatePlatformContent(platformId, content) {

@@ -1,8 +1,11 @@
-// ============ 3. API Hook - 修复版本 ============
-// src/components/MultiPlatformUI/hooks/useAPI.js
+// src/components/MultiPlatformUI/hooks/useAPI.js - 修复版本
 import { useState, useCallback } from 'react';
 
-const API_BASE = 'http://localhost:3001/api';
+// 🔧 修复：使用环境变量，并提供后备选项
+const API_BASE = process.env.REACT_APP_API_URL || '/api';
+
+console.log('[API] 使用API基础地址:', API_BASE);
+console.log('[API] 环境变量:', process.env.NODE_ENV);
 
 export const useAPI = () => {
     const [platformConfigs, setPlatformConfigs] = useState({});
@@ -12,24 +15,49 @@ export const useAPI = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const loadPlatformConfigs = useCallback(async () => {
-        try {
-            console.log('[API] 开始加载平台配置...');
+    // 🔧 修复：创建一个通用的fetch函数，处理超时和错误
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-            const response = await fetch(`${API_BASE}/platforms`, {
-                method: 'GET',
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
                 headers: {
-                    'Content-Type': 'application/json'
-                },
-                // 添加超时处理
-                signal: AbortSignal.timeout(10000) // 10秒超时
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
-            const data = await response.json();
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                throw new Error(`期望JSON响应，但收到: ${contentType}\n响应内容: ${text.substring(0, 200)}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error(`请求超时 (${timeoutMs}ms)`);
+            }
+            throw error;
+        }
+    };
+
+    const loadPlatformConfigs = useCallback(async () => {
+        try {
+            console.log('[API] 开始加载平台配置...');
+            console.log('[API] 请求URL:', `${API_BASE}/platforms`);
+
+            const data = await fetchWithTimeout(`${API_BASE}/platforms`);
             console.log('[API] 平台配置响应:', data);
 
             if (data.success) {
@@ -49,15 +77,16 @@ export const useAPI = () => {
 
                 setPlatformConfigs(configs);
                 setAvailablePlatforms(platforms);
-                console.log('[API] ✅ 平台配置加载成功:', configs);
+                console.log('[API] ✅ 平台配置加载成功:', Object.keys(configs));
                 return true;
             } else {
                 throw new Error(data.error || '平台配置加载失败');
             }
         } catch (error) {
             console.error('[API] ❌ 平台配置加载失败:', error);
+            console.error('[API] 错误详情:', error.message);
 
-            // 使用增强的默认配置作为后备
+            // 使用默认配置作为后备
             const fallbackPlatforms = [
                 {
                     id: 'wechat',
@@ -131,8 +160,8 @@ export const useAPI = () => {
             setPlatformConfigs(configs);
             setAvailablePlatforms(fallbackPlatforms);
 
-            // 设置错误但不阻塞应用
-            setError(`平台配置加载失败，使用默认配置: ${error.message}`);
+            // 设置详细的错误信息
+            setError(`平台配置加载失败: ${error.message}. 当前使用默认配置。`);
             console.log('[API] 🔄 使用默认平台配置');
             return false;
         }
@@ -141,20 +170,9 @@ export const useAPI = () => {
     const loadAvailableBrowsers = useCallback(async () => {
         try {
             console.log('[API] 开始加载浏览器列表...');
+            console.log('[API] 请求URL:', `${API_BASE}/browsers`);
 
-            const response = await fetch(`${API_BASE}/browsers`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                signal: AbortSignal.timeout(8000) // 8秒超时
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const data = await fetchWithTimeout(`${API_BASE}/browsers`, {}, 8000);
             console.log('[API] 浏览器列表响应:', data);
 
             if (data.success) {
@@ -167,7 +185,6 @@ export const useAPI = () => {
             }
         } catch (error) {
             console.error('[API] ⚠️ 浏览器列表加载失败:', error);
-            // 浏览器列表失败不阻塞应用，设置空数组
             setAvailableBrowsers([]);
             return false;
         }
@@ -176,20 +193,9 @@ export const useAPI = () => {
     const loadUploadedFiles = useCallback(async () => {
         try {
             console.log('[API] 开始加载文件列表...');
+            console.log('[API] 请求URL:', `${API_BASE}/files`);
 
-            const response = await fetch(`${API_BASE}/files`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                signal: AbortSignal.timeout(5000) // 5秒超时
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const data = await fetchWithTimeout(`${API_BASE}/files`, {}, 5000);
             console.log('[API] 文件列表响应:', data);
 
             if (data.success) {
@@ -202,7 +208,6 @@ export const useAPI = () => {
             }
         } catch (error) {
             console.error('[API] ⚠️ 文件列表加载失败:', error);
-            // 文件列表失败不阻塞应用，设置空数组
             setUploadedFiles([]);
             return false;
         }
@@ -220,7 +225,6 @@ export const useAPI = () => {
                 loadUploadedFiles()
             ]);
 
-            // 记录结果但不因为失败而终止
             console.log('[API] 浏览器加载结果:', browserResult.status);
             console.log('[API] 文件加载结果:', filesResult.status);
 
@@ -236,6 +240,9 @@ export const useAPI = () => {
     // 初始化加载函数
     const initializeData = useCallback(async () => {
         console.log('[API] 🚀 开始初始化系统数据...');
+        console.log('[API] 当前环境:', process.env.NODE_ENV);
+        console.log('[API] API基础地址:', API_BASE);
+
         setIsLoading(true);
         setError(null);
 
@@ -255,7 +262,6 @@ export const useAPI = () => {
                 files: filesResult.status
             });
 
-            // 只要平台配置成功就算初始化成功
             if (platformResult) {
                 console.log('[API] ✅ 系统初始化成功');
             } else {
@@ -284,7 +290,7 @@ export const useAPI = () => {
         loadAvailableBrowsers,
         loadUploadedFiles,
         refreshData,
-        initializeData, // 新增初始化方法
+        initializeData,
 
         // 辅助信息
         hasData: availablePlatforms.length > 0,
