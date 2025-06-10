@@ -1,7 +1,7 @@
-// ============ 1. 主组件 MultiPlatformUI.js ============
+// ============ 1. 主组件 MultiPlatformUI.js - 修复版本 ============
 // src/components/MultiPlatformUI/index.js
 import React, { useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 
 // 导入子组件
 import StepIndicator from './components/StepIndicator';
@@ -49,54 +49,80 @@ const MultiPlatformUI = () => {
         uploadedFiles,
         isLoading,
         error,
-        loadPlatformConfigs,
-        loadAvailableBrowsers,
-        loadUploadedFiles,
+        hasData,
+        isReady,
+        initializeData,
         refreshData
     } = useAPI();
 
-    // 初始化
+    // 初始化 - 使用新的 initializeData 方法
     useEffect(() => {
-        const initializeComponent = async () => {
-            try {
-                await loadPlatformConfigs();
-                await loadAvailableBrowsers();
-                await loadUploadedFiles();
-            } catch (error) {
-                console.error('[MultiPlatform] 初始化失败:', error);
-            }
-        };
+        console.log('[MultiPlatform] 组件挂载，开始初始化...');
+        initializeData();
+    }, [initializeData]);
 
-        initializeComponent();
-    }, [loadPlatformConfigs, loadAvailableBrowsers, loadUploadedFiles]);
-
-    // 加载状态
+    // 渲染加载状态
     if (isLoading) {
         return (
             <div className="max-w-7xl mx-auto p-6 bg-white min-h-screen">
                 <div className="flex items-center justify-center h-64">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <p className="text-gray-600">正在加载系统配置...</p>
+                        <p className="text-gray-600 text-lg">正在加载系统配置...</p>
+                        <p className="text-gray-500 text-sm mt-2">
+                            正在连接后端服务并加载平台配置
+                        </p>
+
+                        {/* 加载状态指示器 */}
+                        <div className="mt-4 space-y-2">
+                            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                                <span>平台配置</span>
+                            </div>
+                            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                                <span>浏览器实例</span>
+                            </div>
+                            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                                <span>文件列表</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         );
     }
 
-    // 错误状态
-    if (error) {
+    // 渲染错误状态（改进版）
+    if (error && !hasData) {
         return (
             <div className="max-w-7xl mx-auto p-6 bg-white min-h-screen">
                 <div className="flex items-center justify-center h-64">
-                    <div className="text-center">
+                    <div className="text-center max-w-md">
+                        <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                        <h2 className="text-xl font-bold text-gray-900 mb-2">系统初始化失败</h2>
                         <p className="text-red-600 mb-4">{error}</p>
-                        <button
-                            onClick={refreshData}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                        >
-                            重新加载
-                        </button>
+
+                        <div className="space-y-3">
+                            <button
+                                onClick={initializeData}
+                                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                disabled={isLoading}
+                            >
+                                {isLoading ? '重新加载中...' : '重新加载'}
+                            </button>
+
+                            <div className="text-left p-3 bg-gray-50 rounded-md text-sm">
+                                <h3 className="font-medium text-gray-900 mb-2">故障排除:</h3>
+                                <ul className="text-gray-600 space-y-1 text-xs">
+                                    <li>• 确保后端服务运行在 localhost:3001</li>
+                                    <li>• 检查网络连接</li>
+                                    <li>• 查看浏览器控制台错误信息</li>
+                                    <li>• 确认 CORS 配置正确</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -188,7 +214,7 @@ const MultiPlatformUI = () => {
                     <div className="flex items-center space-x-4">
                         <button
                             onClick={refreshData}
-                            className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 text-sm"
+                            className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 text-sm transition-colors"
                             disabled={isLoading}
                         >
                             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -198,8 +224,14 @@ const MultiPlatformUI = () => {
                         {/* 系统状态指示 */}
                         <div className="flex items-center space-x-2 text-sm">
                             <div className="flex items-center space-x-1">
-                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                <span className="text-gray-600">系统正常</span>
+                                {isReady ? (
+                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                ) : (
+                                    <AlertCircle className="w-4 h-4 text-yellow-500" />
+                                )}
+                                <span className={`${isReady ? 'text-green-600' : 'text-yellow-600'}`}>
+                                    {isReady ? '系统就绪' : '部分功能受限'}
+                                </span>
                             </div>
                             <span className="text-gray-400">|</span>
                             <span className="text-gray-600">
@@ -212,6 +244,16 @@ const MultiPlatformUI = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* 错误提示 (非阻塞性) */}
+                {error && hasData && (
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <div className="flex items-center">
+                            <AlertCircle className="w-4 h-4 text-yellow-600 mr-2" />
+                            <span className="text-yellow-800 text-sm">{error}</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* 步骤指示器 */}
@@ -244,6 +286,24 @@ const MultiPlatformUI = () => {
                 selectedPlatforms={selectedPlatforms}
                 executionResults={executionResults}
             />
+
+            {/* 调试信息 (开发环境) */}
+            {process.env.NODE_ENV === 'development' && (
+                <div className="mt-8 p-4 bg-gray-100 rounded-lg text-xs text-gray-600">
+                    <details>
+                        <summary className="cursor-pointer font-medium">调试信息</summary>
+                        <div className="mt-2 space-y-1">
+                            <div>平台配置: {Object.keys(platformConfigs).length} 个</div>
+                            <div>可用平台: {availablePlatforms.length} 个</div>
+                            <div>浏览器实例: {availableBrowsers.length} 个</div>
+                            <div>已上传文件: {uploadedFiles.length} 个</div>
+                            <div>当前步骤: {currentStep}/5</div>
+                            <div>选中平台: {selectedPlatforms.join(', ') || '无'}</div>
+                            <div>系统状态: {isReady ? '就绪' : '初始化中'}</div>
+                        </div>
+                    </details>
+                </div>
+            )}
         </div>
     );
 };

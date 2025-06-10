@@ -552,79 +552,119 @@ app.get('/api/workflow/status/:executionId', (req, res) => {
 4. POST /api/platforms/adapt-multi - 批量适配内容到多个平台
 5. POST /api/workflow/multi-execute - 执行多平台发布工作流
 */
+// 在 server.js 中修复平台配置接口
+// 替换现有的 app.get('/api/platforms') 路由
 
-// 获取平台配置 - 添加到现有路由中
 app.get('/api/platforms', (req, res) => {
     try {
-        // 动态导入平台配置
-        import('../electron_browser/automation/config/platforms.js').then(({ PLATFORM_CONFIGS, getAvailablePlatforms }) => {
-            const availablePlatforms = getAvailablePlatforms();
+        console.log('[PlatformAPI] 收到平台配置请求');
 
-            res.json({
-                success: true,
-                platforms: availablePlatforms,
-                configs: PLATFORM_CONFIGS,
-                timestamp: new Date().toISOString()
-            });
-        }).catch(error => {
-            console.error('[PlatformAPI] 加载平台配置失败:', error);
+        // 直接在这里定义平台配置，避免动态导入问题
+        const PLATFORM_CONFIGS = {
+            wechat: {
+                id: 'wechat',
+                name: '微信视频号',
+                icon: '🎬',
+                color: 'bg-green-500',
+                status: 'stable',
+                fields: {
+                    title: { required: false, maxLength: 16, minLength: 6 },
+                    description: { required: true, maxLength: 500 }
+                },
+                features: {
+                    useIframe: true,
+                    needShortTitle: true,
+                    supportLocation: true
+                },
+                urls: {
+                    upload: 'https://channels.weixin.qq.com/platform/post/create'
+                }
+            },
+            douyin: {
+                id: 'douyin',
+                name: '抖音',
+                icon: '🎵',
+                color: 'bg-black',
+                status: 'testing',
+                fields: {
+                    title: { required: true, maxLength: 55 },
+                    description: { required: true, maxLength: 2200 }
+                },
+                features: {
+                    needClickUpload: true,
+                    supportHashtags: true
+                },
+                urls: {
+                    upload: 'https://creator.douyin.com/creator-micro/content/upload'
+                }
+            },
+            xiaohongshu: {
+                id: 'xiaohongshu',
+                name: '小红书',
+                icon: '📝',
+                color: 'bg-red-500',
+                status: 'testing',
+                fields: {
+                    title: { required: true, maxLength: 20 },
+                    description: { required: true, maxLength: 1000 }
+                },
+                features: {
+                    supportEmoji: true,
+                    supportMultiImage: true
+                },
+                urls: {
+                    upload: 'https://creator.xiaohongshu.com/publish/publish?source=official'
+                }
+            },
+            kuaishou: {
+                id: 'kuaishou',
+                name: '快手',
+                icon: '⚡',
+                color: 'bg-orange-500',
+                status: 'testing',
+                fields: {
+                    title: { required: false },
+                    description: { required: true, maxLength: 300 }
+                },
+                features: {
+                    noTitle: true
+                },
+                urls: {
+                    upload: 'https://cp.kuaishou.com/article/publish/video'
+                }
+            }
+        };
 
-            // 返回基础配置作为后备
-            res.json({
-                success: true,
-                platforms: [
-                    {
-                        id: 'wechat',
-                        name: '微信视频号',
-                        icon: '🎬',
-                        color: 'bg-green-500',
-                        status: 'stable',
-                        fields: {
-                            title: { required: false, maxLength: 16, minLength: 6 },
-                            description: { required: true, maxLength: 500 }
-                        },
-                        features: {
-                            useIframe: true,
-                            needShortTitle: true,
-                            supportLocation: true
-                        }
-                    },
-                    {
-                        id: 'douyin',
-                        name: '抖音',
-                        icon: '🎵',
-                        color: 'bg-black',
-                        status: 'testing',
-                        fields: {
-                            title: { required: true, maxLength: 55 },
-                            description: { required: true, maxLength: 2200 }
-                        },
-                        features: {
-                            needClickUpload: true,
-                            supportHashtags: true
-                        }
-                    }
-                ],
-                fallback: true,
-                timestamp: new Date().toISOString()
-            });
+        // 转换为数组格式
+        const platforms = Object.values(PLATFORM_CONFIGS).filter(p => p.status !== 'planned');
+
+        console.log(`[PlatformAPI] ✅ 返回 ${platforms.length} 个平台配置`);
+
+        res.json({
+            success: true,
+            platforms: platforms,
+            configs: PLATFORM_CONFIGS,
+            timestamp: new Date().toISOString(),
+            source: 'server-embedded'
         });
+
     } catch (error) {
+        console.error('[PlatformAPI] ❌ 平台配置接口错误:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: error.message,
+            timestamp: new Date().toISOString()
         });
     }
 });
 
-// 验证平台内容 - 新增API
+// 验证平台内容 - 修复版本
 app.post('/api/platforms/validate', async (req, res) => {
     try {
         const { platformId, content } = req.body;
+        console.log(`[PlatformAPI] 验证平台内容: ${platformId}`);
 
-        // 动态导入验证函数
-        const { validatePlatformContent } = await import('../electron_browser/automation/config/platforms.js');
-
+        // 使用内嵌的验证逻辑
         const validation = validatePlatformContent(platformId, content);
 
         res.json({
@@ -634,6 +674,7 @@ app.post('/api/platforms/validate', async (req, res) => {
         });
 
     } catch (error) {
+        console.error('[PlatformAPI] 验证失败:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -641,13 +682,11 @@ app.post('/api/platforms/validate', async (req, res) => {
     }
 });
 
-// 适配内容到平台 - 新增API
+// 适配内容到平台 - 修复版本
 app.post('/api/platforms/adapt', async (req, res) => {
     try {
         const { platformId, content } = req.body;
-
-        // 动态导入适配函数
-        const { adaptContentToPlatform } = await import('../electron_browser/automation/config/platforms.js');
+        console.log(`[PlatformAPI] 适配内容到平台: ${platformId}`);
 
         const adaptedContent = adaptContentToPlatform(platformId, content);
 
@@ -658,6 +697,7 @@ app.post('/api/platforms/adapt', async (req, res) => {
         });
 
     } catch (error) {
+        console.error('[PlatformAPI] 适配失败:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -665,24 +705,30 @@ app.post('/api/platforms/adapt', async (req, res) => {
     }
 });
 
-// 批量适配内容到多个平台 - 新增API
+// 批量适配内容到多个平台 - 修复版本
 app.post('/api/platforms/adapt-multi', async (req, res) => {
     try {
         const { platforms, content } = req.body;
-
-        // 动态导入函数
-        const { adaptContentToPlatform, validatePlatformContent } = await import('../electron_browser/automation/config/platforms.js');
+        console.log(`[PlatformAPI] 批量适配到 ${platforms.length} 个平台`);
 
         const results = platforms.map(platformId => {
-            const adaptedContent = adaptContentToPlatform(platformId, content);
-            const validation = validatePlatformContent(platformId, adaptedContent);
+            try {
+                const adaptedContent = adaptContentToPlatform(platformId, content);
+                const validation = validatePlatformContent(platformId, adaptedContent);
 
-            return {
-                platformId,
-                adaptedContent,
-                validation,
-                warnings: []
-            };
+                return {
+                    platformId,
+                    adaptedContent,
+                    validation,
+                    warnings: []
+                };
+            } catch (error) {
+                return {
+                    platformId,
+                    error: error.message,
+                    validation: { valid: false, errors: [error.message] }
+                };
+            }
         });
 
         res.json({
@@ -692,6 +738,7 @@ app.post('/api/platforms/adapt-multi', async (req, res) => {
         });
 
     } catch (error) {
+        console.error('[PlatformAPI] 批量适配失败:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -699,222 +746,116 @@ app.post('/api/platforms/adapt-multi', async (req, res) => {
     }
 });
 
-// 多平台工作流执行 - 新增API
-app.post('/api/workflow/multi-execute', async (req, res) => {
-    try {
-        const { platforms, content, videoFile, browserMapping } = req.body;
+// ============ 辅助函数 ============
 
-        console.log('[MultiWorkflow] 开始多平台执行:', {
-            platforms,
-            videoFile,
-            browserCount: Object.keys(browserMapping).length
-        });
-
-        // 验证必需参数
-        if (!platforms || !Array.isArray(platforms) || platforms.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: '缺少平台参数'
-            });
-        }
-
-        if (!content || !videoFile) {
-            return res.status(400).json({
-                success: false,
-                error: '缺少内容或视频文件参数'
-            });
-        }
-
-        // 检查浏览器映射
-        const missingMappings = platforms.filter(p => !browserMapping[p]);
-        if (missingMappings.length > 0) {
-            return res.status(400).json({
-                success: false,
-                error: `缺少浏览器映射: ${missingMappings.join(', ')}`
-            });
-        }
-
-        // 生成执行ID
-        const executionId = `multi_exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        // 为每个平台创建单独的任务
-        const platformTasks = platforms.map(async (platformId) => {
-            try {
-                console.log(`[MultiWorkflow] 开始执行平台: ${platformId}`);
-
-                // 获取平台配置
-                const { getPlatformConfig, adaptContentToPlatform } = await import('../electron_browser/automation/config/platforms.js');
-                const platformConfig = getPlatformConfig(platformId);
-
-                if (!platformConfig) {
-                    throw new Error(`平台配置不存在: ${platformId}`);
-                }
-
-                // 适配内容
-                const adaptedContent = adaptContentToPlatform(platformId, content);
-
-                // 创建平台特定的临时配置
-                const platformTempConfig = await createTempConfigFiles(`${executionId}_${platformId}`, {
-                    workflowType: 'video',
-                    content: {
-                        ...adaptedContent,
-                        videoFile: videoFile
-                    },
-                    template: getDefaultTemplate('video'),
-                    account: {
-                        id: browserMapping[platformId],
-                        name: `${platformConfig.name}账号`,
-                        platform: platformId
-                    }
-                });
-
-                // 执行单平台工作流
-                const result = await executeAutomationWorkflow({
-                    executionId: `${executionId}_${platformId}`,
-                    workflowType: 'video',
-                    platform: platformId,
-                    debugPort: 9225, // 可以从browserMapping中获取具体端口
-                    tempConfig: platformTempConfig
-                });
-
-                // 清理临时文件
-                cleanupTempFiles(platformTempConfig);
-
-                return {
-                    platform: platformId,
-                    platformName: platformConfig.name,
-                    success: true,
-                    result,
-                    adaptedContent
-                };
-
-            } catch (error) {
-                console.error(`[MultiWorkflow] 平台 ${platformId} 执行失败:`, error.message);
-                return {
-                    platform: platformId,
-                    platformName: platformId,
-                    success: false,
-                    error: error.message
-                };
+function validatePlatformContent(platformId, content) {
+    const platformConfigs = {
+        wechat: {
+            name: '微信视频号',
+            fields: {
+                title: { required: false, maxLength: 16, minLength: 6 },
+                description: { required: true, maxLength: 500 }
             }
-        });
-
-        // 并行执行所有平台任务
-        console.log(`[MultiWorkflow] 开始并行执行 ${platforms.length} 个平台...`);
-        const results = await Promise.allSettled(platformTasks);
-
-        // 处理结果
-        const processedResults = results.map((result, index) => {
-            if (result.status === 'fulfilled') {
-                return result.value;
-            } else {
-                return {
-                    platform: platforms[index],
-                    success: false,
-                    error: result.reason?.message || String(result.reason)
-                };
+        },
+        douyin: {
+            name: '抖音',
+            fields: {
+                title: { required: true, maxLength: 55 },
+                description: { required: true, maxLength: 2200 }
             }
-        });
+        },
+        xiaohongshu: {
+            name: '小红书',
+            fields: {
+                title: { required: true, maxLength: 20 },
+                description: { required: true, maxLength: 1000 }
+            }
+        },
+        kuaishou: {
+            name: '快手',
+            fields: {
+                title: { required: false },
+                description: { required: true, maxLength: 300 }
+            }
+        }
+    };
 
-        const successCount = processedResults.filter(r => r.success).length;
-        const failureCount = processedResults.length - successCount;
-
-        console.log(`[MultiWorkflow] 多平台执行完成: 成功 ${successCount}, 失败 ${failureCount}`);
-
-        res.json({
-            success: successCount > 0,
-            executionId,
-            totalPlatforms: platforms.length,
-            successCount,
-            failureCount,
-            results: processedResults,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        console.error('[MultiWorkflow] 执行失败:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+    const config = platformConfigs[platformId];
+    if (!config) {
+        return { valid: false, errors: [`不支持的平台: ${platformId}`] };
     }
-});
 
-// ============ 工具函数扩展 ============
+    const errors = [];
 
-// 扩展现有的 executeAutomationWorkflow 函数以支持平台参数
-function executeAutomationWorkflowWithPlatform({ executionId, workflowType, platform, debugPort, tempConfig }) {
-    return new Promise((resolve, reject) => {
-        // 修改 CLI 路径查找逻辑
-        const automationPath = path.join(__dirname, '../automation');
-        const cliPath = path.join(automationPath, 'cli/automation-cli.js');
+    // 验证标题
+    if (config.fields.title?.required && !content.title?.trim()) {
+        errors.push(`${config.name}需要标题`);
+    }
 
-        // 检查新的多平台CLI是否存在
-        let finalCliPath = cliPath;
-        if (fs.existsSync(path.join(automationPath, 'cli/multi-platform-cli.js'))) {
-            finalCliPath = path.join(automationPath, 'cli/multi-platform-cli.js');
-        }
+    if (content.title && config.fields.title?.maxLength && content.title.length > config.fields.title.maxLength) {
+        errors.push(`${config.name}标题超出限制(${config.fields.title.maxLength}字符)`);
+    }
 
-        const args = [
-            'publish',
-            '-t', workflowType,
-            '-c', tempConfig.contentFile,
-            '-a', tempConfig.accountFile,
-            '-p', tempConfig.templateFile,
-            '--debug-port', debugPort.toString()
-        ];
+    if (content.title && config.fields.title?.minLength && content.title.length < config.fields.title.minLength) {
+        errors.push(`${config.name}标题至少需要${config.fields.title.minLength}字符`);
+    }
 
-        // 如果支持平台参数，添加平台ID
-        if (platform) {
-            args.push('--platform', platform);
-        }
+    // 验证描述
+    if (config.fields.description?.required && !content.description?.trim()) {
+        errors.push(`${config.name}需要描述`);
+    }
 
-        console.log('[Automation] 执行多平台命令:', 'node', finalCliPath, ...args);
+    if (content.description && config.fields.description?.maxLength && content.description.length > config.fields.description.maxLength) {
+        errors.push(`${config.name}描述超出限制(${config.fields.description.maxLength}字符)`);
+    }
 
-        const process = spawn('node', [finalCliPath, ...args], {
-            cwd: automationPath,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        let output = '';
-        let errorOutput = '';
-
-        process.stdout.on('data', (data) => {
-            const text = data.toString();
-            output += text;
-            console.log(`[Automation-${platform || workflowType}-${executionId}]`, text);
-        });
-
-        process.stderr.on('data', (data) => {
-            const text = data.toString();
-            errorOutput += text;
-            console.error(`[Automation-Error-${platform || workflowType}-${executionId}]`, text);
-        });
-
-        process.on('close', (code) => {
-            if (code === 0) {
-                console.log(`[Automation] 平台 ${platform} 工作流 ${executionId} 执行成功`);
-                resolve({
-                    success: true,
-                    executionId,
-                    platform,
-                    output,
-                    workflowType,
-                    exitCode: code
-                });
-            } else {
-                console.error(`[Automation] 平台 ${platform} 工作流 ${executionId} 执行失败，退出码: ${code}`);
-                reject(new Error(`平台 ${platform} 工作流执行失败，退出码: ${code}\n${errorOutput}`));
-            }
-        });
-
-        process.on('error', (error) => {
-            console.error(`[Automation] 平台 ${platform} 进程启动失败:`, error);
-            reject(error);
-        });
-    });
+    return {
+        valid: errors.length === 0,
+        errors: errors
+    };
 }
 
+function adaptContentToPlatform(platformId, content) {
+    const platformConfigs = {
+        wechat: { fields: { title: { maxLength: 16 }, description: { maxLength: 500 } } },
+        douyin: { fields: { title: { maxLength: 55 }, description: { maxLength: 2200 } } },
+        xiaohongshu: { fields: { title: { maxLength: 20 }, description: { maxLength: 1000 } } },
+        kuaishou: { fields: { description: { maxLength: 300 } }, features: { noTitle: true } }
+    };
+
+    const config = platformConfigs[platformId];
+    if (!config) return content;
+
+    const adapted = { ...content };
+
+    // 特殊处理：快手不需要标题
+    if (config.features?.noTitle) {
+        adapted.title = '';
+    }
+
+    // 适配标题
+    if (adapted.title && config.fields.title?.maxLength) {
+        if (adapted.title.length > config.fields.title.maxLength) {
+            adapted.title = adapted.title.substring(0, config.fields.title.maxLength - 3) + '...';
+        }
+    }
+
+    // 适配描述
+    if (adapted.description && config.fields.description?.maxLength) {
+        if (adapted.description.length > config.fields.description.maxLength) {
+            const truncated = adapted.description.substring(0, config.fields.description.maxLength - 3);
+            const lastSentence = truncated.lastIndexOf('。');
+
+            if (lastSentence > config.fields.description.maxLength * 0.7) {
+                adapted.description = adapted.description.substring(0, lastSentence + 1);
+            } else {
+                adapted.description = truncated + '...';
+            }
+        }
+    }
+
+    return adapted;
+}
 
 // ============ 工具函数 ============
 
