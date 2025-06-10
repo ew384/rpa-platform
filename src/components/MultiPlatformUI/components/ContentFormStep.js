@@ -464,3 +464,5 @@ const ContentFormStep = ({
         </div>
     );
 };
+
+export default ContentFormStep;

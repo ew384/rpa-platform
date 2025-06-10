@@ -671,7 +671,7 @@ app.post('/api/platforms/adapt-multi', async (req, res) => {
         const { platforms, content } = req.body;
 
         // 动态导入函数
-        const { adaptContentToPlatform, validatePlatformContent } = await import('../automation/config/platforms.js');
+        const { adaptContentToPlatform, validatePlatformContent } = await import('../electron_browser/automation/config/platforms.js');
 
         const results = platforms.map(platformId => {
             const adaptedContent = adaptContentToPlatform(platformId, content);
