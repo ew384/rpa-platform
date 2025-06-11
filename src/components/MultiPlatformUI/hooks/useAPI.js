@@ -1,8 +1,8 @@
 // src/components/MultiPlatformUI/hooks/useAPI.js - 修复版本
 import { useState, useCallback } from 'react';
 
-// 🔧 修复：使用环境变量，并提供后备选项
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
+// 🔧 修复：确保正确的API地址
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 console.log('[API] 使用API基础地址:', API_BASE);
 console.log('[API] 环境变量:', process.env.NODE_ENV);
@@ -16,7 +16,9 @@ export const useAPI = () => {
     const [error, setError] = useState(null);
 
     // 🔧 修复：创建一个通用的fetch函数，处理超时和错误
-    const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+        console.log(`[API] 发起请求: ${url}`);
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -32,6 +34,8 @@ export const useAPI = () => {
 
             clearTimeout(timeoutId);
 
+            console.log(`[API] 响应状态: ${response.status} ${response.statusText}`);
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -39,15 +43,19 @@ export const useAPI = () => {
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
-                throw new Error(`期望JSON响应，但收到: ${contentType}\n响应内容: ${text.substring(0, 200)}`);
+                console.error(`[API] 非JSON响应:`, text.substring(0, 200));
+                throw new Error(`期望JSON响应，但收到: ${contentType}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log(`[API] 响应数据:`, data);
+            return data;
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
                 throw new Error(`请求超时 (${timeoutMs}ms)`);
             }
+            console.error(`[API] 请求失败:`, error);
             throw error;
         }
     };
@@ -55,10 +63,7 @@ export const useAPI = () => {
     const loadPlatformConfigs = useCallback(async () => {
         try {
             console.log('[API] 开始加载平台配置...');
-            console.log('[API] 请求URL:', `${API_BASE}/platforms`);
-
             const data = await fetchWithTimeout(`${API_BASE}/platforms`);
-            console.log('[API] 平台配置响应:', data);
 
             if (data.success) {
                 const configs = {};
@@ -84,7 +89,6 @@ export const useAPI = () => {
             }
         } catch (error) {
             console.error('[API] ❌ 平台配置加载失败:', error);
-            console.error('[API] 错误详情:', error.message);
 
             // 使用默认配置作为后备
             const fallbackPlatforms = [
@@ -159,8 +163,6 @@ export const useAPI = () => {
 
             setPlatformConfigs(configs);
             setAvailablePlatforms(fallbackPlatforms);
-
-            // 设置详细的错误信息
             setError(`平台配置加载失败: ${error.message}. 当前使用默认配置。`);
             console.log('[API] 🔄 使用默认平台配置');
             return false;
@@ -170,15 +172,30 @@ export const useAPI = () => {
     const loadAvailableBrowsers = useCallback(async () => {
         try {
             console.log('[API] 开始加载浏览器列表...');
-            console.log('[API] 请求URL:', `${API_BASE}/browsers`);
+            const data = await fetchWithTimeout(`${API_BASE}/browsers`, {}, 10000);
 
-            const data = await fetchWithTimeout(`${API_BASE}/browsers`, {}, 8000);
-            console.log('[API] 浏览器列表响应:', data);
+            if (data.success && data.browsers) {
+                console.log(`[API] 原始浏览器数据:`, data.browsers);
 
-            if (data.success) {
-                const runningBrowsers = data.browsers.filter(b => b.status === 'running');
-                setAvailableBrowsers(runningBrowsers);
-                console.log(`[API] ✅ 浏览器列表加载成功: ${runningBrowsers.length} 个运行中`);
+                // 🔧 修复：处理浏览器数据，确保显示所有信息
+                const processedBrowsers = data.browsers.map(browser => ({
+                    id: browser.id || browser.accountId,
+                    accountId: browser.accountId,
+                    name: browser.name || `浏览器-${browser.id}`,
+                    status: browser.status || 'unknown',
+                    debugPort: browser.debugPort,
+                    url: browser.url,
+                    tabsCount: browser.tabsCount || 0,
+                    chromeVersion: browser.chromeVersion,
+                    group: browser.group,
+                    createdAt: browser.createdAt,
+                    lastActive: browser.lastActive
+                }));
+
+                setAvailableBrowsers(processedBrowsers);
+                console.log(`[API] ✅ 浏览器列表加载成功: ${processedBrowsers.length} 个浏览器`);
+                console.log(`[API] 运行中的浏览器:`, processedBrowsers.filter(b => b.status === 'running'));
+
                 return true;
             } else {
                 throw new Error(data.error || '浏览器列表加载失败');
@@ -193,10 +210,7 @@ export const useAPI = () => {
     const loadUploadedFiles = useCallback(async () => {
         try {
             console.log('[API] 开始加载文件列表...');
-            console.log('[API] 请求URL:', `${API_BASE}/files`);
-
-            const data = await fetchWithTimeout(`${API_BASE}/files`, {}, 5000);
-            console.log('[API] 文件列表响应:', data);
+            const data = await fetchWithTimeout(`${API_BASE}/files`, {}, 8000);
 
             if (data.success) {
                 const videoFiles = data.files.filter(file => file.type === 'video');
@@ -215,8 +229,7 @@ export const useAPI = () => {
 
     const refreshData = useCallback(async () => {
         console.log('[API] 🔄 开始刷新数据...');
-        setIsLoading(true);
-        setError(null);
+        setError(null); // 清除之前的错误
 
         try {
             // 并行加载浏览器和文件数据
@@ -225,14 +238,21 @@ export const useAPI = () => {
                 loadUploadedFiles()
             ]);
 
-            console.log('[API] 浏览器加载结果:', browserResult.status);
-            console.log('[API] 文件加载结果:', filesResult.status);
+            console.log('[API] 浏览器加载结果:', browserResult.status, browserResult.value);
+            console.log('[API] 文件加载结果:', filesResult.status, filesResult.value);
+
+            // 🔧 修复：更好的错误处理
+            if (browserResult.status === 'rejected') {
+                console.error('[API] 浏览器数据刷新失败:', browserResult.reason);
+            }
+            if (filesResult.status === 'rejected') {
+                console.error('[API] 文件数据刷新失败:', filesResult.reason);
+            }
 
         } catch (error) {
             console.error('[API] ❌ 数据刷新失败:', error);
             setError('数据刷新部分失败');
         } finally {
-            setIsLoading(false);
             console.log('[API] 🔄 数据刷新完成');
         }
     }, [loadAvailableBrowsers, loadUploadedFiles]);
@@ -248,9 +268,11 @@ export const useAPI = () => {
 
         try {
             // 1. 首先加载平台配置（最重要）
+            console.log('[API] 步骤1: 加载平台配置...');
             const platformResult = await loadPlatformConfigs();
 
             // 2. 并行加载其他数据（失败不影响应用启动）
+            console.log('[API] 步骤2: 加载浏览器和文件数据...');
             const [browserResult, filesResult] = await Promise.allSettled([
                 loadAvailableBrowsers(),
                 loadUploadedFiles()
@@ -259,11 +281,25 @@ export const useAPI = () => {
             console.log('[API] 初始化结果:', {
                 platform: platformResult,
                 browser: browserResult.status,
-                files: filesResult.status
+                browserValue: browserResult.value,
+                files: filesResult.status,
+                filesValue: filesResult.value
             });
 
+            // 🔧 修复：更详细的状态报告
+            const browserSuccess = browserResult.status === 'fulfilled' && browserResult.value;
+            const filesSuccess = filesResult.status === 'fulfilled' && filesResult.value;
+
             if (platformResult) {
-                console.log('[API] ✅ 系统初始化成功');
+                if (browserSuccess && filesSuccess) {
+                    console.log('[API] ✅ 系统完全初始化成功');
+                } else if (browserSuccess || filesSuccess) {
+                    console.log('[API] ✅ 系统部分初始化成功');
+                    setError('部分功能可能受限，某些服务连接失败');
+                } else {
+                    console.log('[API] ⚠️ 系统初始化完成，但外部服务连接失败');
+                    setError('外部服务连接失败，核心功能可用');
+                }
             } else {
                 console.log('[API] 🔄 系统初始化完成（使用默认配置）');
             }
@@ -275,6 +311,38 @@ export const useAPI = () => {
             setIsLoading(false);
         }
     }, [loadPlatformConfigs, loadAvailableBrowsers, loadUploadedFiles]);
+
+    // 🔧 新增：获取系统状态信息
+    const getSystemStatus = useCallback(() => {
+        const runningBrowsers = availableBrowsers.filter(b => b.status === 'running');
+        const totalBrowsers = availableBrowsers.length;
+
+        return {
+            platforms: {
+                total: availablePlatforms.length,
+                available: availablePlatforms.filter(p => p.status !== 'disabled').length
+            },
+            browsers: {
+                total: totalBrowsers,
+                running: runningBrowsers.length,
+                stopped: totalBrowsers - runningBrowsers.length,
+                details: availableBrowsers.map(b => ({
+                    id: b.id,
+                    name: b.name,
+                    status: b.status,
+                    port: b.debugPort,
+                    url: b.url
+                }))
+            },
+            files: {
+                total: uploadedFiles.length
+            },
+            api: {
+                baseUrl: API_BASE,
+                connected: !error || availablePlatforms.length > 0
+            }
+        };
+    }, [availablePlatforms, availableBrowsers, uploadedFiles, error]);
 
     return {
         // 数据状态
@@ -291,9 +359,13 @@ export const useAPI = () => {
         loadUploadedFiles,
         refreshData,
         initializeData,
+        getSystemStatus,
 
         // 辅助信息
         hasData: availablePlatforms.length > 0,
-        isReady: !isLoading && availablePlatforms.length > 0
+        isReady: !isLoading && availablePlatforms.length > 0,
+
+        // 🔧 新增：更详细的状态信息
+        systemStatus: getSystemStatus()
     };
 };

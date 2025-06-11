@@ -4,6 +4,7 @@
 ├── docker-compose.yml
 ├── Dockerfile
 ├── nginx.conf
+├── output
 ├── package.json
 ├── package-lock.json
 ├── postcss.config.js
@@ -38,4 +39,4 @@
 ├── test-automation-path.js
 └── tree.sh
 
-7 directories, 31 files
+8 directories, 31 files
