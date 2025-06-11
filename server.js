@@ -1,237 +1,164 @@
-// server.js - RPA Platform 后端服务器 (完整版)
+// server.js 
 const express = require('express');
 const multer = require('multer');
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
-const fetch = require('node-fetch'); // 确保已安装: npm install node-fetch@2
+const cors = require('cors');
+
+// 🔧 使用正确的路径导入（CommonJS）
+const { UniversalPublisher } = require('../electron_browser/automation/core/index.js');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-
-// Electron HTTP API 配置
-const ELECTRON_API_PORT = 9528; // 与 Electron 中的端口保持一致
-const ELECTRON_API_BASE = `http://localhost:${ELECTRON_API_PORT}`;
+const port = process.env.PORT || 3001;
 
 // 中间件
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(express.static('public'));
 
-// 创建必要的目录
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-const TEMP_DIR = path.join(__dirname, 'temp');
-const LOGS_DIR = path.join(__dirname, 'logs');
-
-[UPLOAD_DIR, TEMP_DIR, LOGS_DIR].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-});
-
-// 配置文件上传
+// 文件上传配置
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        let uploadPath = UPLOAD_DIR;
-
-        // 根据文件类型分类存储
-        if (file.mimetype.startsWith('video/')) {
-            uploadPath = path.join(UPLOAD_DIR, 'videos');
-        } else if (file.mimetype.startsWith('image/')) {
-            uploadPath = path.join(UPLOAD_DIR, 'images');
-        } else if (file.mimetype.startsWith('audio/')) {
-            uploadPath = path.join(UPLOAD_DIR, 'audio');
+        const uploadDir = './uploads';
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
         }
-
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-
-        cb(null, uploadPath);
+        cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // 生成唯一文件名
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(file.originalname);
-        cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
     }
 });
 
 const upload = multer({
-    storage,
-    limits: {
-        fileSize: 500 * 1024 * 1024 // 500MB 限制
-    },
+    storage: storage,
+    limits: { fileSize: 500 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        // 文件类型验证
-        const allowedTypes = /video|image|audio/;
-        const mimeType = allowedTypes.test(file.mimetype);
-
-        if (mimeType) {
+        if (file.mimetype.startsWith('video/')) {
             cb(null, true);
         } else {
-            cb(new Error('不支持的文件类型'), false);
+            cb(new Error('只允许上传视频文件'));
         }
     }
 });
 
-// 存储活跃的工作流执行
-const activeWorkflows = new Map();
+// 🔧 延迟初始化发布器
+let publisher = null;
 
-// ============ Electron API 集成函数 ============
-
-// 检查 Electron HTTP API 是否可用
-async function checkElectronApiAvailability() {
-    try {
-        const response = await fetch(`${ELECTRON_API_BASE}/api/health`, {
-            method: 'GET',
-            timeout: 3000
-        });
-        return response.ok;
-    } catch (error) {
-        return false;
-    }
-}
-
-// 从 Electron HTTP API 获取浏览器实例
-async function getBrowserInstancesFromElectron() {
-    try {
-        console.log('[BrowserAPI] 🔗 Calling Electron HTTP API...');
-
-        const response = await fetch(`${ELECTRON_API_BASE}/api/browsers`, {
-            method: 'GET',
-            timeout: 5000
-        });
-
-        if (!response.ok) {
-            throw new Error(`Electron API responded with ${response.status}: ${response.statusText}`);
+const initializePublisher = () => {
+    if (!publisher) {
+        try {
+            publisher = new UniversalPublisher({
+                electronApiUrl: 'http://localhost:9528',
+                enableConcurrency: true,
+                maxConcurrentPlatforms: 4,
+                timeout: 30000
+            });
+            console.log('✅ UniversalPublisher 初始化成功');
+        } catch (error) {
+            console.error('❌ UniversalPublisher 初始化失败:', error.message);
+            throw error;
         }
-
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Electron API returned unsuccessful response');
-        }
-
-        console.log(`[BrowserAPI] ✅ Successfully got ${result.browsers.length} browsers from Electron`);
-        return result.browsers;
-    } catch (error) {
-        console.error('[BrowserAPI] ❌ Failed to get browsers from Electron HTTP API:', error.message);
-        throw error;
     }
-}
+    return publisher;
+};
 
-// 获取特定浏览器的详细信息
-async function getBrowserDetailsFromElectron(browserId) {
-    try {
-        const response = await fetch(`${ELECTRON_API_BASE}/api/browser/${browserId}`, {
-            method: 'GET',
-            timeout: 3000
-        });
+// ==================== API 路由 ====================
 
-        if (!response.ok) {
-            throw new Error(`Failed to get browser details: ${response.status}`);
-        }
-
-        const result = await response.json();
-        return result.success ? result.browser : null;
-    } catch (error) {
-        console.error(`[BrowserAPI] Failed to get browser details for ${browserId}:`, error.message);
-        return null;
-    }
-}
-
-// 获取浏览器标签页信息
-async function getBrowserTabsFromElectron(browserId) {
-    try {
-        const response = await fetch(`${ELECTRON_API_BASE}/api/browser/${browserId}/tabs`, {
-            method: 'GET',
-            timeout: 3000
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to get browser tabs: ${response.status}`);
-        }
-
-        const result = await response.json();
-        return result.success ? result.tabs : [];
-    } catch (error) {
-        console.error(`[BrowserAPI] Failed to get browser tabs for ${browserId}:`, error.message);
-        return [];
-    }
-}
-
-// ============ API 路由 ============
-
-// ============ 使用说明 ============
-/*
-前端组件现在会通过以下API获取平台配置：
-
-1. GET /api/platforms - 获取所有平台配置
-2. POST /api/platforms/validate - 验证单个平台内容
-3. POST /api/platforms/adapt - 适配内容到单个平台
-4. POST /api/platforms/adapt-multi - 批量适配内容到多个平台
-5. POST /api/workflow/multi-execute - 执行多平台发布工作流
-*/
-// 获取可用的工作流类型
-app.get('/api/workflows', (req, res) => {
+// 健康检查
+app.get('/api/health', (req, res) => {
     res.json({
         success: true,
-        workflows: [
-            {
-                type: 'video',
-                name: '视频发布',
-                description: '上传视频到微信视频号',
-                supportedFormats: ['mp4', 'avi', 'mov']
-            },
-            {
-                type: 'article',
-                name: '图文发布',
-                description: '发布图文内容',
-                supportedFormats: ['jpg', 'png', 'jpeg']
-            },
-            {
-                type: 'music',
-                name: '音乐发布',
-                description: '上传音乐内容',
-                supportedFormats: ['mp3', 'wav', 'm4a']
-            },
-            {
-                type: 'audio',
-                name: '音频发布',
-                description: '上传音频内容',
-                supportedFormats: ['mp3', 'wav', 'ogg']
-            }
-        ]
+        service: 'RPA Platform API',
+        timestamp: new Date().toISOString(),
+        version: '2.0.0'
     });
 });
 
-// 文件上传接口
+// 获取平台配置
+app.get('/api/platforms', async (req, res) => {
+    try {
+        const pub = initializePublisher();
+        const platforms = pub.getSupportedPlatforms();
+        const platformDetails = platforms.map(platformId => {
+            const config = pub.getPlatformConfig(platformId);
+            return {
+                id: platformId,
+                name: config?.name || platformId,
+                icon: config?.icon || '📱',
+                color: config?.color || 'bg-gray-500',
+                status: config?.status || 'unknown',
+                fields: config?.fields || {},
+                features: config?.features || {}
+            };
+        });
+
+        res.json({
+            success: true,
+            platforms: platformDetails,
+            count: platformDetails.length
+        });
+    } catch (error) {
+        console.error('❌ 获取平台配置失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            platforms: []
+        });
+    }
+});
+
+// 获取浏览器实例
+app.get('/api/browsers', async (req, res) => {
+    try {
+        const fetch = require('node-fetch');
+        const response = await fetch('http://localhost:9528/api/browsers');
+        const data = await response.json();
+
+        if (data.success) {
+            res.json(data);
+        } else {
+            throw new Error(data.error || '获取浏览器实例失败');
+        }
+    } catch (error) {
+        console.error('❌ 获取浏览器实例失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            browsers: []
+        });
+    }
+});
+
+// 文件上传
 app.post('/api/upload', upload.single('file'), (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
                 success: false,
-                error: '没有上传文件'
+                error: '未上传文件'
             });
         }
 
-        console.log('[Upload] 文件上传成功:', req.file.filename);
+        const fileInfo = {
+            id: Date.now().toString(),
+            filename: req.file.filename,
+            originalName: req.file.originalname,
+            name: req.file.originalname,
+            size: req.file.size,
+            type: 'video',
+            createdAt: new Date().toISOString()
+        };
 
         res.json({
             success: true,
-            file: {
-                id: req.file.filename,
-                originalName: req.file.originalname,
-                filename: req.file.filename,
-                path: req.file.path,
-                size: req.file.size,
-                mimetype: req.file.mimetype,
-                uploadTime: new Date().toISOString()
-            }
+            file: fileInfo,
+            message: '文件上传成功'
         });
     } catch (error) {
-        console.error('[Upload] 文件上传失败:', error);
+        console.error('❌ 文件上传失败:', error.message);
         res.status(500).json({
             success: false,
             error: error.message
@@ -239,1307 +166,191 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
     }
 });
 
-// 获取上传的文件列表
+// 获取文件列表
 app.get('/api/files', (req, res) => {
     try {
-        const files = [];
-        const scanDir = (dir, type) => {
-            if (fs.existsSync(dir)) {
-                const items = fs.readdirSync(dir);
-                items.forEach(item => {
-                    const filePath = path.join(dir, item);
-                    const stats = fs.statSync(filePath);
-                    if (stats.isFile()) {
-                        files.push({
-                            id: item,
-                            name: item,
-                            type,
-                            size: stats.size,
-                            path: filePath,
-                            createdAt: stats.birthtime
-                        });
-                    }
-                });
-            }
-        };
-
-        scanDir(path.join(UPLOAD_DIR, 'videos'), 'video');
-        scanDir(path.join(UPLOAD_DIR, 'images'), 'image');
-        scanDir(path.join(UPLOAD_DIR, 'audio'), 'audio');
-
-        res.json({
-            success: true,
-            files: files.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// ============ 浏览器实例相关API (通过Electron HTTP API) ============
-
-// 获取可用的浏览器实例
-app.get('/api/browsers', async (req, res) => {
-    try {
-        console.log('[BrowserAPI] 🔍 Fetching browser instances...');
-
-        // 检查 Electron API 可用性
-        const isElectronAvailable = await checkElectronApiAvailability();
-
-        if (!isElectronAvailable) {
-            return res.json({
-                success: true,
-                browsers: [],
-                message: 'Electron HTTP API not available. Please ensure Electron app is running.',
-                timestamp: new Date().toISOString(),
-                source: 'electron-unavailable'
-            });
+        const uploadDir = './uploads';
+        if (!fs.existsSync(uploadDir)) {
+            return res.json({ success: true, files: [] });
         }
 
-        // 从 Electron 获取浏览器实例
-        const browsers = await getBrowserInstancesFromElectron();
-
-        const runningCount = browsers.filter(b => b.status === 'running').length;
-
-        console.log(`[BrowserAPI] ✅ Found ${browsers.length} browser instances (${runningCount} running)`);
-
-        res.json({
-            success: true,
-            browsers,
-            statistics: {
-                total: browsers.length,
-                running: runningCount,
-                stopped: browsers.length - runningCount
-            },
-            timestamp: new Date().toISOString(),
-            source: 'electron-http-api'
-        });
-
-    } catch (error) {
-        console.error('[BrowserAPI] ❌ Failed to get browser instances:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            browsers: [],
-            timestamp: new Date().toISOString()
-        });
-    }
-});
-
-// 获取特定浏览器实例详情
-app.get('/api/browsers/:browserId', async (req, res) => {
-    try {
-        const { browserId } = req.params;
-
-        const isElectronAvailable = await checkElectronApiAvailability();
-        if (!isElectronAvailable) {
-            return res.status(503).json({
-                success: false,
-                error: 'Electron API not available'
-            });
-        }
-
-        const browser = await getBrowserDetailsFromElectron(browserId);
-
-        if (!browser) {
-            return res.status(404).json({
-                success: false,
-                error: 'Browser instance not found'
-            });
-        }
-
-        res.json({
-            success: true,
-            browser
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// 获取浏览器实例的标签页
-app.get('/api/browsers/:browserId/tabs', async (req, res) => {
-    try {
-        const { browserId } = req.params;
-
-        const isElectronAvailable = await checkElectronApiAvailability();
-        if (!isElectronAvailable) {
-            return res.status(503).json({
-                success: false,
-                error: 'Electron API not available'
-            });
-        }
-
-        const tabs = await getBrowserTabsFromElectron(browserId);
-
-        res.json({
-            success: true,
-            browserId,
-            tabs
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// 刷新浏览器实例状态
-app.post('/api/browsers/refresh', async (req, res) => {
-    try {
-        console.log('[BrowserAPI] 🔄 Refreshing browser instances...');
-
-        const isElectronAvailable = await checkElectronApiAvailability();
-        if (!isElectronAvailable) {
-            return res.status(503).json({
-                success: false,
-                error: 'Electron API not available'
-            });
-        }
-
-        // 调用 Electron API 的刷新接口
-        const response = await fetch(`${ELECTRON_API_BASE}/api/browsers/refresh`, {
-            method: 'POST',
-            timeout: 5000
-        });
-
-        if (!response.ok) {
-            throw new Error(`Electron refresh API failed: ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        res.json({
-            success: true,
-            message: 'Browser instances refreshed via Electron API',
-            electronResponse: result,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// 检查 Electron API 状态的接口
-app.get('/api/electron/status', async (req, res) => {
-    try {
-        const isAvailable = await checkElectronApiAvailability();
-
-        if (isAvailable) {
-            const response = await fetch(`${ELECTRON_API_BASE}/api/health`);
-            const healthData = await response.json();
-
-            res.json({
-                success: true,
-                available: true,
-                electronApi: healthData,
-                endpoint: ELECTRON_API_BASE
-            });
-        } else {
-            res.json({
-                success: true,
-                available: false,
-                message: 'Electron HTTP API is not responding',
-                endpoint: ELECTRON_API_BASE
-            });
-        }
-    } catch (error) {
-        res.json({
-            success: false,
-            available: false,
-            error: error.message,
-            endpoint: ELECTRON_API_BASE
-        });
-    }
-});
-
-// ============ 工作流执行相关API ============
-
-// 执行工作流
-app.post('/api/workflow/execute', async (req, res) => {
-    try {
-        const { workflowType, content, template, account, debugPort = 9711 } = req.body;
-
-        console.log('[Workflow] 开始执行工作流:', {
-            type: workflowType,
-            debugPort,
-            account: account?.id || 'default'
-        });
-
-        // 验证必需参数
-        if (!workflowType || !content) {
-            return res.status(400).json({
-                success: false,
-                error: '缺少必需参数: workflowType 或 content'
-            });
-        }
-
-        // 生成执行ID
-        const executionId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        // 创建临时配置文件
-        const tempConfig = await createTempConfigFiles(executionId, {
-            workflowType,
-            content,
-            template: template || getDefaultTemplate(workflowType),
-            account: account || { id: 'default', name: '默认账号' }
-        });
-
-        // 启动自动化进程
-        const automationResult = await executeAutomationWorkflow({
-            executionId,
-            workflowType,
-            debugPort,
-            tempConfig
-        });
-
-        // 清理临时文件
-        cleanupTempFiles(tempConfig);
-
-        console.log('[Workflow] 工作流执行完成:', executionId);
-
-        res.json({
-            success: true,
-            executionId,
-            result: automationResult
-        });
-
-    } catch (error) {
-        console.error('[Workflow] 执行失败:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-app.post('/api/workflow/multi-execute', async (req, res) => {
-    try {
-        console.log('[MultiWorkflow] 🔍 收到多平台发布请求');
-        console.log('[MultiWorkflow] 📋 请求体:', JSON.stringify(req.body, null, 2));
-
-        const {
-            workflowType = 'video',
-            platforms = [],
-            content = {},
-            template = {},
-            platformMappings = {},
-            videoFile  // 🔧 从根级别提取 videoFile
-        } = req.body;
-
-        console.log('[MultiWorkflow] 📁 内容对象:', JSON.stringify(content, null, 2));
-        console.log('[MultiWorkflow] 🎬 根级别视频文件:', videoFile);
-        console.log('[MultiWorkflow] 🎬 content中的视频文件:', content.videoFile);
-
-        if (!platforms || platforms.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: '缺少目标平台列表'
-            });
-        }
-
-        // 🔧 修复：统一处理 videoFile，优先使用根级别的 videoFile
-        let videoFilePath = null;
-        const sourceVideoFile = videoFile || content.videoFile;
-
-        if (sourceVideoFile) {
-            console.log('[MultiWorkflow] 🔍 使用视频文件:', sourceVideoFile);
-
-            if (!path.isAbsolute(sourceVideoFile)) {
-                videoFilePath = path.join(UPLOAD_DIR, 'videos', sourceVideoFile);
-                console.log('[MultiWorkflow] 🔄 转换为绝对路径:', videoFilePath);
-            } else {
-                videoFilePath = sourceVideoFile;
-                console.log('[MultiWorkflow] ✅ 已是绝对路径:', videoFilePath);
-            }
-
-            // 验证文件是否存在
-            const fileExists = fs.existsSync(videoFilePath);
-            console.log('[MultiWorkflow] 📁 文件存在检查:', fileExists, '路径:', videoFilePath);
-
-            if (!fileExists) {
-                console.error('[MultiWorkflow] ❌ 文件不存在:', videoFilePath);
-
-                // 列出目录内容进行调试
-                const videosDir = path.join(UPLOAD_DIR, 'videos');
-                if (fs.existsSync(videosDir)) {
-                    const files = fs.readdirSync(videosDir);
-                    console.log('[MultiWorkflow] 📂 videos目录文件列表:', files);
-                } else {
-                    console.log('[MultiWorkflow] ❌ videos目录不存在:', videosDir);
-                }
-
-                return res.status(400).json({
-                    success: false,
-                    error: `视频文件不存在: ${videoFilePath}`
-                });
-            }
-        } else {
-            console.log('[MultiWorkflow] ⚠️ 没有提供视频文件');
-            return res.status(400).json({
-                success: false,
-                error: '缺少视频文件'
-            });
-        }
-
-        const executionId = `multi_exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log('[MultiWorkflow] 🆔 执行ID:', executionId);
-
-        const results = [];
-
-        // 串行执行每个平台
-        for (const platformId of platforms) {
-            try {
-                console.log(`[MultiWorkflow] 🚀 开始执行平台: ${platformId}`);
-
-                const mapping = platformMappings[platformId] || {};
-                console.log(`[MultiWorkflow] 🗺️ 平台映射配置:`, JSON.stringify(mapping, null, 2));
-
-                // 🔧 修复：确保 videoFile 在 content 对象中
-                const contentWithFile = {
-                    ...content,
-                    videoFile: videoFilePath  // 将 videoFile 放入 content 对象中
+        const files = fs.readdirSync(uploadDir)
+            .filter(filename => {
+                const ext = path.extname(filename).toLowerCase();
+                return ['.mp4', '.avi', '.mov', '.wmv'].includes(ext);
+            })
+            .map(filename => {
+                const filepath = path.join(uploadDir, filename);
+                const stats = fs.statSync(filepath);
+                return {
+                    id: filename,
+                    filename: filename,
+                    name: filename,
+                    size: stats.size,
+                    type: 'video',
+                    createdAt: stats.birthtime.toISOString()
                 };
-                console.log(`[MultiWorkflow] 📦 传递给平台的内容:`, JSON.stringify(contentWithFile, null, 2));
+            })
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-                const result = await executeSinglePlatform(
-                    platformId,
-                    workflowType,
-                    contentWithFile,  // 传递包含 videoFile 的 content
-                    template,
-                    mapping,
-                    executionId
-                );
-
-                console.log(`[MultiWorkflow] ✅ 平台 ${platformId} 执行成功`);
-                results.push({
-                    platform: platformId,
-                    platformName: getPlatformName(platformId),
-                    success: true,
-                    ...result
-                });
-
-            } catch (error) {
-                console.error(`[MultiWorkflow] ❌ 平台 ${platformId} 执行失败:`, error);
-                console.error(`[MultiWorkflow] 📋 错误详情:`, error.stack);
-
-                results.push({
-                    platform: platformId,
-                    platformName: getPlatformName(platformId),
-                    success: false,
-                    error: error.message
-                });
-            }
-        }
-
-        const successCount = results.filter(r => r.success).length;
-        console.log(`[MultiWorkflow] 📊 执行完成 - 成功: ${successCount}, 失败: ${results.length - successCount}`);
-
-        res.json({
-            success: true,
-            executionId,
-            results,
-            summary: {
-                totalPlatforms: platforms.length,
-                successCount,
-                failureCount: platforms.length - successCount,
-                successRate: (successCount / platforms.length * 100).toFixed(1)
-            }
-        });
-
+        res.json({ success: true, files });
     } catch (error) {
-        console.error('[MultiWorkflow] ❌ 多平台执行失败:', error);
-        console.error('[MultiWorkflow] 📋 错误堆栈:', error.stack);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-async function executeSinglePlatform(platformId, workflowType, content, template, mapping, baseExecutionId) {
-    console.log(`[SinglePlatform] 🎯 执行单平台: ${platformId}`);
-    console.log(`[SinglePlatform] 📝 工作流类型: ${workflowType}`);
-    console.log(`[SinglePlatform] 📦 内容对象:`, JSON.stringify(content, null, 2));
-    console.log(`[SinglePlatform] 🎬 视频文件路径:`, content.videoFile);
-
-    const account = mapping.account || { id: `${platformId}_default`, name: `${platformId}默认账号` };
-    const debugPort = mapping.debugPort || 9711;
-
-    console.log(`[SinglePlatform] 👤 账号配置:`, JSON.stringify(account, null, 2));
-    console.log(`[SinglePlatform] 🔌 调试端口: ${debugPort}`);
-
-    // 创建临时配置文件
-    const tempConfig = await createTempConfigFiles(`${baseExecutionId}_${platformId}`, {
-        workflowType,
-        content,
-        template: template || getDefaultTemplate(workflowType),
-        account
-    });
-
-    console.log(`[SinglePlatform] 📁 临时配置文件:`, JSON.stringify(tempConfig, null, 2));
-
-    // 验证临时配置文件内容
-    try {
-        const contentJson = JSON.parse(fs.readFileSync(tempConfig.contentFile, 'utf8'));
-        console.log(`[SinglePlatform] 📋 content.json内容:`, JSON.stringify(contentJson, null, 2));
-        console.log(`[SinglePlatform] 🎬 content.json中的videoFile:`, contentJson.videoFile);
-    } catch (error) {
-        console.error(`[SinglePlatform] ❌ 读取content.json失败:`, error);
-    }
-
-    // 启动自动化进程
-    const automationResult = await executeAutomationWorkflow({
-        executionId: `${baseExecutionId}_${platformId}`,
-        workflowType,
-        debugPort,
-        tempConfig
-    });
-
-    // 清理临时文件
-    cleanupTempFiles(tempConfig);
-
-    return {
-        result: automationResult,
-        message: '发布成功',
-        debugPort
-    };
-}
-
-// 3. 修改 createTempConfigFiles 函数，添加详细日志
-async function createTempConfigFiles(executionId, config) {
-    console.log(`[TempConfig] 🗂️ 创建临时配置文件: ${executionId}`);
-    console.log(`[TempConfig] 📦 配置对象:`, JSON.stringify(config, null, 2));
-
-    const tempDir = path.join(TEMP_DIR, executionId);
-    if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-        console.log(`[TempConfig] 📁 创建临时目录: ${tempDir}`);
-    }
-
-    const files = {
-        contentFile: path.join(tempDir, 'content.json'),
-        templateFile: path.join(tempDir, 'template.json'),
-        accountFile: path.join(tempDir, 'account.json')
-    };
-
-    console.log(`[TempConfig] 📋 文件路径:`, JSON.stringify(files, null, 2));
-
-    // 处理视频文件路径
-    if (config.content.videoFile) {
-        console.log(`[TempConfig] 🎬 原始视频文件路径: ${config.content.videoFile}`);
-
-        if (!path.isAbsolute(config.content.videoFile)) {
-            const videoPath = path.join(UPLOAD_DIR, 'videos', config.content.videoFile);
-            console.log(`[TempConfig] 🔄 转换为绝对路径: ${videoPath}`);
-
-            if (fs.existsSync(videoPath)) {
-                config.content.videoFile = videoPath;
-                console.log(`[TempConfig] ✅ 文件存在，使用路径: ${config.content.videoFile}`);
-            } else {
-                console.error(`[TempConfig] ❌ 文件不存在: ${videoPath}`);
-
-                // 列出可用文件
-                const videosDir = path.join(UPLOAD_DIR, 'videos');
-                if (fs.existsSync(videosDir)) {
-                    const files = fs.readdirSync(videosDir);
-                    console.log(`[TempConfig] 📂 可用文件:`, files);
-                }
-
-                throw new Error(`视频文件不存在: ${videoPath}`);
-            }
-        } else {
-            // 验证绝对路径文件是否存在
-            if (!fs.existsSync(config.content.videoFile)) {
-                console.error(`[TempConfig] ❌ 绝对路径文件不存在: ${config.content.videoFile}`);
-                throw new Error(`视频文件不存在: ${config.content.videoFile}`);
-            }
-            console.log(`[TempConfig] ✅ 绝对路径文件存在: ${config.content.videoFile}`);
-        }
-    } else {
-        console.log(`[TempConfig] ⚠️ 没有提供视频文件路径`);
-    }
-
-    console.log(`[TempConfig] 💾 最终内容配置:`, JSON.stringify(config.content, null, 2));
-
-    // 写入文件
-    fs.writeFileSync(files.contentFile, JSON.stringify(config.content, null, 2));
-    fs.writeFileSync(files.templateFile, JSON.stringify(config.template, null, 2));
-    fs.writeFileSync(files.accountFile, JSON.stringify(config.account, null, 2));
-
-    console.log(`[TempConfig] ✅ 临时配置文件创建完成`);
-
-    return files;
-}
-// 执行单个平台的函数
-async function executeSinglePlatform(platformId, workflowType, content, template, mapping, baseExecutionId) {
-    const account = mapping.account || { id: `${platformId}_default`, name: `${platformId}默认账号` };
-    const debugPort = mapping.debugPort || 9711;
-
-    console.log(`[MultiWorkflow] 执行平台 ${platformId}，端口 ${debugPort}`);
-
-    // 创建临时配置文件
-    const tempConfig = await createTempConfigFiles(`${baseExecutionId}_${platformId}`, {
-        workflowType,
-        content,
-        template: template || getDefaultTemplate(workflowType),
-        account
-    });
-
-    // 启动自动化进程
-    const automationResult = await executeAutomationWorkflow({
-        executionId: `${baseExecutionId}_${platformId}`,
-        workflowType,
-        debugPort,
-        tempConfig
-    });
-
-    // 清理临时文件
-    cleanupTempFiles(tempConfig);
-
-    return {
-        result: automationResult,
-        message: '发布成功',
-        debugPort
-    };
-}
-
-function getPlatformName(platformId) {
-    const names = {
-        'wechat': '微信视频号',
-        'douyin': '抖音',
-        'xiaohongshu': '小红书',
-        'kuaishou': '快手'
-    };
-    return names[platformId] || platformId;
-}
-
-
-// 🔧 修改现有的执行函数，支持平台参数
-function executeAutomationWorkflow({ executionId, workflowType, debugPort, tempConfig, platform = 'wechat' }) {
-    return new Promise((resolve, reject) => {
-        // 🔧 修复：使用正确的 automation 路径查找逻辑
-        const automationPath = findAutomationPath();
-
-        if (!automationPath) {
-            reject(new Error('找不到 automation CLI 工具'));
-            return;
-        }
-
-        const finalAutomationPath = path.dirname(path.dirname(automationPath));
-
-        const args = [
-            'publish',
-            '-t', workflowType,
-            '-c', tempConfig.contentFile,
-            '-a', tempConfig.accountFile,
-            '-p', tempConfig.templateFile,
-            '--platform', platform,  // 🔧 添加平台参数
-            '--debug-port', debugPort.toString()
-        ];
-
-        console.log(`[Automation-${platform}] 执行命令:`, 'node', automationPath, ...args);
-
-        const process = spawn('node', [automationPath, ...args], {
-            cwd: finalAutomationPath,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        let output = '';
-        let errorOutput = '';
-
-        process.stdout.on('data', (data) => {
-            const text = data.toString();
-            output += text;
-            console.log(`[Automation-${platform}-${executionId}]`, text);
-        });
-
-        process.stderr.on('data', (data) => {
-            const text = data.toString();
-            errorOutput += text;
-            console.error(`[Automation-Error-${platform}-${executionId}]`, text);
-        });
-
-        process.on('close', (code) => {
-            if (code === 0) {
-                console.log(`[Automation] 平台 ${platform} 执行成功`);
-                resolve({
-                    success: true,
-                    executionId,
-                    platform,
-                    output,
-                    workflowType,
-                    exitCode: code,
-                    message: '发布成功'
-                });
-            } else {
-                console.error(`[Automation] 平台 ${platform} 执行失败，退出码: ${code}`);
-                reject(new Error(`平台 ${platform} 执行失败，退出码: ${code}\n${errorOutput}`));
-            }
-        });
-
-        process.on('error', (error) => {
-            console.error(`[Automation] 平台 ${platform} 进程启动失败:`, error);
-            reject(error);
-        });
-    });
-}
-
-
-function findAutomationPath() {
-    const possiblePaths = [
-        path.join(__dirname, '../electron_browser/automation/cli/automation-cli.js'),
-        path.join(__dirname, '../automation/cli/automation-cli.js'),
-        path.join(__dirname, '../../automation/cli/automation-cli.js'),
-        path.join(process.cwd(), '../automation/cli/automation-cli.js'),
-        path.join(process.cwd(), '../electron_browser/automation/cli/automation-cli.js')
-    ];
-
-    for (const testPath of possiblePaths) {
-        if (fs.existsSync(testPath)) {
-            return testPath;
-        }
-    }
-    return null;
-}
-// 获取工作流执行状态
-app.get('/api/workflow/status/:executionId', (req, res) => {
-    const { executionId } = req.params;
-    const workflow = activeWorkflows.get(executionId);
-
-    if (!workflow) {
-        return res.status(404).json({
-            success: false,
-            error: '工作流不存在'
-        });
-    }
-
-    res.json({
-        success: true,
-        status: workflow
-    });
-});
-
-
-app.get('/api/platforms', (req, res) => {
-    try {
-        console.log('[PlatformAPI] 收到平台配置请求');
-
-        // 直接在这里定义平台配置，避免动态导入问题
-        const PLATFORM_CONFIGS = {
-            wechat: {
-                id: 'wechat',
-                name: '微信视频号',
-                icon: '🎬',
-                color: 'bg-green-500',
-                status: 'stable',
-                fields: {
-                    title: { required: false, maxLength: 16, minLength: 6 },
-                    description: { required: true, maxLength: 500 }
-                },
-                features: {
-                    useIframe: true,
-                    needShortTitle: true,
-                    supportLocation: true
-                },
-                urls: {
-                    upload: 'https://channels.weixin.qq.com/platform/post/create'
-                }
-            },
-            douyin: {
-                id: 'douyin',
-                name: '抖音',
-                icon: '🎵',
-                color: 'bg-black',
-                status: 'testing',
-                fields: {
-                    title: { required: true, maxLength: 55 },
-                    description: { required: true, maxLength: 2200 }
-                },
-                features: {
-                    needClickUpload: true,
-                    supportHashtags: true
-                },
-                urls: {
-                    upload: 'https://creator.douyin.com/creator-micro/content/upload'
-                }
-            },
-            xiaohongshu: {
-                id: 'xiaohongshu',
-                name: '小红书',
-                icon: '📝',
-                color: 'bg-red-500',
-                status: 'testing',
-                fields: {
-                    title: { required: true, maxLength: 20 },
-                    description: { required: true, maxLength: 1000 }
-                },
-                features: {
-                    supportEmoji: true,
-                    supportMultiImage: true
-                },
-                urls: {
-                    upload: 'https://creator.xiaohongshu.com/publish/publish?source=official'
-                }
-            },
-            kuaishou: {
-                id: 'kuaishou',
-                name: '快手',
-                icon: '⚡',
-                color: 'bg-orange-500',
-                status: 'testing',
-                fields: {
-                    title: { required: false },
-                    description: { required: true, maxLength: 300 }
-                },
-                features: {
-                    noTitle: true
-                },
-                urls: {
-                    upload: 'https://cp.kuaishou.com/article/publish/video'
-                }
-            }
-        };
-
-        // 转换为数组格式
-        const platforms = Object.values(PLATFORM_CONFIGS).filter(p => p.status !== 'planned');
-
-        console.log(`[PlatformAPI] ✅ 返回 ${platforms.length} 个平台配置`);
-
-        res.json({
-            success: true,
-            platforms: platforms,
-            configs: PLATFORM_CONFIGS,
-            timestamp: new Date().toISOString(),
-            source: 'server-embedded'
-        });
-
-    } catch (error) {
-        console.error('[PlatformAPI] ❌ 平台配置接口错误:', error);
+        console.error('❌ 获取文件列表失败:', error.message);
         res.status(500).json({
             success: false,
             error: error.message,
-            timestamp: new Date().toISOString()
+            files: []
         });
     }
 });
 
-// 验证平台内容 - 修复版本
-app.post('/api/platforms/validate', async (req, res) => {
-    try {
-        const { platformId, content } = req.body;
-        console.log(`[PlatformAPI] 验证平台内容: ${platformId}`);
-
-        // 使用内嵌的验证逻辑
-        const validation = validatePlatformContent(platformId, content);
-
-        res.json({
-            success: true,
-            validation,
-            platformId
-        });
-
-    } catch (error) {
-        console.error('[PlatformAPI] 验证失败:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// 适配内容到平台 - 修复版本
-app.post('/api/platforms/adapt', async (req, res) => {
-    try {
-        const { platformId, content } = req.body;
-        console.log(`[PlatformAPI] 适配内容到平台: ${platformId}`);
-
-        const adaptedContent = adaptContentToPlatform(platformId, content);
-
-        res.json({
-            success: true,
-            adaptedContent,
-            platformId
-        });
-
-    } catch (error) {
-        console.error('[PlatformAPI] 适配失败:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// 批量适配内容到多个平台 - 修复版本
+// 内容适配预览
 app.post('/api/platforms/adapt-multi', async (req, res) => {
     try {
         const { platforms, content } = req.body;
-        console.log(`[PlatformAPI] 批量适配到 ${platforms.length} 个平台`);
 
+        if (!platforms || !Array.isArray(platforms)) {
+            return res.status(400).json({
+                success: false,
+                error: '平台列表参数无效'
+            });
+        }
+
+        const pub = initializePublisher();
         const results = platforms.map(platformId => {
             try {
-                const adaptedContent = adaptContentToPlatform(platformId, content);
-                const validation = validatePlatformContent(platformId, adaptedContent);
-
-                return {
-                    platformId,
-                    adaptedContent,
-                    validation,
-                    warnings: []
-                };
+                const adaptedContent = pub.multiPlatformEngine.adaptContentToPlatform(platformId, content);
+                const validation = pub.multiPlatformEngine.validatePlatformConfig(platformId, adaptedContent);
+                return { platformId, adaptedContent, validation };
             } catch (error) {
-                return {
-                    platformId,
-                    error: error.message,
-                    validation: { valid: false, errors: [error.message] }
-                };
+                return { platformId, error: error.message };
             }
         });
 
-        res.json({
-            success: true,
-            results,
-            platforms
-        });
-
+        res.json({ success: true, results });
     } catch (error) {
-        console.error('[PlatformAPI] 批量适配失败:', error);
+        console.error('❌ 内容适配失败:', error.message);
         res.status(500).json({
             success: false,
             error: error.message
         });
     }
 });
-// 健康检查 - 具体路由
-app.get('/api/health', (req, res) => {
-    res.json({
-        success: true,
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        service: 'RPA Platform Backend',
-        version: '1.0.0',
-        uptime: process.uptime(),
-        environment: process.env.NODE_ENV || 'development'
-    });
-});
 
-// ============ 修复：添加根API路径 ============
-app.get('/api', (req, res) => {
-    res.json({
-        success: true,
-        name: 'RPA Platform API',
-        version: '1.0.0',
-        timestamp: new Date().toISOString(),
-        service: 'RPA Platform Backend',
-        endpoints: {
-            system: {
-                root: 'GET /api',
-                health: 'GET /api/health',
-                status: 'GET /api/status'
-            },
-            platforms: {
-                list: 'GET /api/platforms',
-                validate: 'POST /api/platforms/validate',
-                adapt: 'POST /api/platforms/adapt',
-                adaptMulti: 'POST /api/platforms/adapt-multi'
-            },
-            browsers: {
-                list: 'GET /api/browsers',
-                details: 'GET /api/browsers/:id',
-                tabs: 'GET /api/browsers/:id/tabs',
-                refresh: 'POST /api/browsers/refresh'
-            },
-            files: {
-                list: 'GET /api/files',
-                upload: 'POST /api/upload'
-            },
-            workflows: {
-                list: 'GET /api/workflows',
-                execute: 'POST /api/workflow/execute',
-                status: 'GET /api/workflow/status/:id',
-                multiExecute: 'POST /api/workflow/multi-execute'
-            },
-            electron: {
-                status: 'GET /api/electron/status'
-            }
-        },
-        statistics: {
-            activeWorkflows: activeWorkflows.size,
-            uploadDirectory: UPLOAD_DIR,
-            electronEndpoint: ELECTRON_API_BASE
-        }
-    });
-});
-// ============ 辅助函数 ============
+// 🔧 并发多平台发布
+app.post('/api/workflow/multi-execute-concurrent', async (req, res) => {
+    console.log('📦 收到并发多平台发布请求');
 
-function validatePlatformContent(platformId, content) {
-    const platformConfigs = {
-        wechat: {
-            name: '微信视频号',
-            fields: {
-                title: { required: false, maxLength: 16, minLength: 6 },
-                description: { required: true, maxLength: 500 }
-            }
-        },
-        douyin: {
-            name: '抖音',
-            fields: {
-                title: { required: true, maxLength: 55 },
-                description: { required: true, maxLength: 2200 }
-            }
-        },
-        xiaohongshu: {
-            name: '小红书',
-            fields: {
-                title: { required: true, maxLength: 20 },
-                description: { required: true, maxLength: 1000 }
-            }
-        },
-        kuaishou: {
-            name: '快手',
-            fields: {
-                title: { required: false },
-                description: { required: true, maxLength: 300 }
-            }
-        }
-    };
-
-    const config = platformConfigs[platformId];
-    if (!config) {
-        return { valid: false, errors: [`不支持的平台: ${platformId}`] };
-    }
-
-    const errors = [];
-
-    // 验证标题
-    if (config.fields.title?.required && !content.title?.trim()) {
-        errors.push(`${config.name}需要标题`);
-    }
-
-    if (content.title && config.fields.title?.maxLength && content.title.length > config.fields.title.maxLength) {
-        errors.push(`${config.name}标题超出限制(${config.fields.title.maxLength}字符)`);
-    }
-
-    if (content.title && config.fields.title?.minLength && content.title.length < config.fields.title.minLength) {
-        errors.push(`${config.name}标题至少需要${config.fields.title.minLength}字符`);
-    }
-
-    // 验证描述
-    if (config.fields.description?.required && !content.description?.trim()) {
-        errors.push(`${config.name}需要描述`);
-    }
-
-    if (content.description && config.fields.description?.maxLength && content.description.length > config.fields.description.maxLength) {
-        errors.push(`${config.name}描述超出限制(${config.fields.description.maxLength}字符)`);
-    }
-
-    return {
-        valid: errors.length === 0,
-        errors: errors
-    };
-}
-
-function adaptContentToPlatform(platformId, content) {
-    const platformConfigs = {
-        wechat: { fields: { title: { maxLength: 16 }, description: { maxLength: 500 } } },
-        douyin: { fields: { title: { maxLength: 55 }, description: { maxLength: 2200 } } },
-        xiaohongshu: { fields: { title: { maxLength: 20 }, description: { maxLength: 1000 } } },
-        kuaishou: { fields: { description: { maxLength: 300 } }, features: { noTitle: true } }
-    };
-
-    const config = platformConfigs[platformId];
-    if (!config) return content;
-
-    const adapted = { ...content };
-
-    // 特殊处理：快手不需要标题
-    if (config.features?.noTitle) {
-        adapted.title = '';
-    }
-
-    // 适配标题
-    if (adapted.title && config.fields.title?.maxLength) {
-        if (adapted.title.length > config.fields.title.maxLength) {
-            adapted.title = adapted.title.substring(0, config.fields.title.maxLength - 3) + '...';
-        }
-    }
-
-    // 适配描述
-    if (adapted.description && config.fields.description?.maxLength) {
-        if (adapted.description.length > config.fields.description.maxLength) {
-            const truncated = adapted.description.substring(0, config.fields.description.maxLength - 3);
-            const lastSentence = truncated.lastIndexOf('。');
-
-            if (lastSentence > config.fields.description.maxLength * 0.7) {
-                adapted.description = adapted.description.substring(0, lastSentence + 1);
-            } else {
-                adapted.description = truncated + '...';
-            }
-        }
-    }
-
-    return adapted;
-}
-
-// ============ 工具函数 ============
-
-// 创建临时配置文件
-async function createTempConfigFiles(executionId, config) {
-    const tempDir = path.join(TEMP_DIR, executionId);
-    if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const files = {
-        contentFile: path.join(tempDir, 'content.json'),
-        templateFile: path.join(tempDir, 'template.json'),
-        accountFile: path.join(tempDir, 'account.json')
-    };
-
-    // 处理文件路径
-    if (config.content.videoFile && !path.isAbsolute(config.content.videoFile)) {
-        const videoPath = path.join(UPLOAD_DIR, 'videos', config.content.videoFile);
-        if (fs.existsSync(videoPath)) {
-            config.content.videoFile = videoPath;
-        }
-    }
-
-    fs.writeFileSync(files.contentFile, JSON.stringify(config.content, null, 2));
-    fs.writeFileSync(files.templateFile, JSON.stringify(config.template, null, 2));
-    fs.writeFileSync(files.accountFile, JSON.stringify(config.account, null, 2));
-
-    return files;
-}
-
-// 执行自动化工作流
-function executeAutomationWorkflow({ executionId, workflowType, debugPort, tempConfig }) {
-    return new Promise((resolve, reject) => {
-        // 🔧 修复：使用正确的 automation 路径
-        // 从当前 rpa-platform 目录找到 electron_browser/automation
-        const automationPath = path.join(__dirname, '../electron_browser/automation');
-        const cliPath = path.join(automationPath, 'cli/automation-cli.js');
-
-        console.log('[Automation] 查找路径:', {
-            currentDir: __dirname,
-            automationPath: automationPath,
-            cliPath: cliPath
-        });
-
-        let finalCliPath = cliPath;
-        let finalAutomationPath = automationPath;
-
-        // 检查文件是否存在
-        if (!fs.existsSync(cliPath)) {
-            // 🔧 尝试其他可能的路径
-            const alternativePaths = [
-                path.join(__dirname, '../automation/cli/automation-cli.js'),
-                path.join(__dirname, '../../automation/cli/automation-cli.js'),
-                path.join(__dirname, '../electron_browser/automation/cli/automation-cli.js'),
-                path.join(process.cwd(), '../automation/cli/automation-cli.js'),
-                path.join(process.cwd(), '../electron_browser/automation/cli/automation-cli.js')
-            ];
-
-            console.log('[Automation] CLI文件不存在，尝试其他路径:');
-            let foundPath = null;
-
-            for (const altPath of alternativePaths) {
-                console.log('[Automation] 检查:', altPath);
-                if (fs.existsSync(altPath)) {
-                    foundPath = altPath;
-                    console.log('[Automation] ✅ 找到CLI文件:', foundPath);
-                    break;
-                }
-            }
-
-            if (!foundPath) {
-                const error = `Automation CLI 不存在，已检查路径:\n${[cliPath, ...alternativePaths].join('\n')}`;
-                console.error('[Automation]', error);
-                reject(new Error(error));
-                return;
-            }
-
-            // 更新找到的路径
-            finalCliPath = foundPath;
-            finalAutomationPath = path.dirname(path.dirname(foundPath));
-        } else {
-            console.log('[Automation] ✅ 找到CLI文件:', cliPath);
-        }
-
-        const args = [
-            'publish',
-            '-t', workflowType,
-            '-c', tempConfig.contentFile,
-            '-a', tempConfig.accountFile,
-            '-p', tempConfig.templateFile,
-            '--debug-port', debugPort.toString()
-        ];
-
-        console.log('[Automation] 执行命令:', 'node', finalCliPath, ...args);
-        console.log('[Automation] 工作目录:', finalAutomationPath);
-
-        const process = spawn('node', [finalCliPath, ...args], {
-            cwd: finalAutomationPath,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        let output = '';
-        let errorOutput = '';
-
-        // 记录工作流状态
-        activeWorkflows.set(executionId, {
-            id: executionId,
-            status: 'running',
-            startTime: new Date().toISOString(),
-            workflowType,
-            debugPort,
-            progress: 0
-        });
-
-        process.stdout.on('data', (data) => {
-            const text = data.toString();
-            output += text;
-            console.log(`[Automation-${executionId}]`, text);
-
-            // 更新进度（简单的文本匹配）
-            let progress = 0;
-            if (text.includes('文件上传成功')) progress = 30;
-            else if (text.includes('填写')) progress = 60;
-            else if (text.includes('发布')) progress = 90;
-
-            if (progress > 0) {
-                const workflow = activeWorkflows.get(executionId);
-                if (workflow) {
-                    workflow.progress = progress;
-                    activeWorkflows.set(executionId, workflow);
-                }
-            }
-        });
-
-        process.stderr.on('data', (data) => {
-            const text = data.toString();
-            errorOutput += text;
-            console.error(`[Automation-Error-${executionId}]`, text);
-        });
-
-        process.on('close', (code) => {
-            const workflow = activeWorkflows.get(executionId);
-
-            if (code === 0) {
-                console.log(`[Automation] 工作流 ${executionId} 执行成功`);
-
-                if (workflow) {
-                    workflow.status = 'completed';
-                    workflow.progress = 100;
-                    workflow.endTime = new Date().toISOString();
-                    activeWorkflows.set(executionId, workflow);
-                }
-
-                resolve({
-                    success: true,
-                    executionId,
-                    output,
-                    workflowType,
-                    exitCode: code
-                });
-            } else {
-                console.error(`[Automation] 工作流 ${executionId} 执行失败，退出码: ${code}`);
-
-                if (workflow) {
-                    workflow.status = 'failed';
-                    workflow.error = errorOutput;
-                    workflow.endTime = new Date().toISOString();
-                    activeWorkflows.set(executionId, workflow);
-                }
-
-                reject(new Error(`工作流执行失败，退出码: ${code}\n${errorOutput}`));
-            }
-        });
-
-        process.on('error', (error) => {
-            console.error(`[Automation] 进程启动失败:`, error);
-
-            const workflow = activeWorkflows.get(executionId);
-            if (workflow) {
-                workflow.status = 'failed';
-                workflow.error = error.message;
-                workflow.endTime = new Date().toISOString();
-                activeWorkflows.set(executionId, workflow);
-            }
-
-            reject(error);
-        });
-    });
-}
-
-// 清理临时文件
-function cleanupTempFiles(tempConfig) {
     try {
-        Object.values(tempConfig).forEach(filePath => {
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+        const {
+            workflowType = 'video',
+            videoFile,
+            platforms = [],
+            content = {},
+            browserMapping = {},
+            template = {}
+        } = req.body;
+
+        // 参数验证
+        if (!videoFile) {
+            return res.status(400).json({
+                success: false,
+                error: '视频文件参数必填'
+            });
+        }
+
+        if (platforms.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: '至少选择一个发布平台'
+            });
+        }
+
+        // 构建账号列表
+        const accounts = platforms.map(platformId => {
+            const browserId = browserMapping[platformId];
+            if (!browserId) {
+                throw new Error(`平台 ${platformId} 未配置浏览器实例`);
             }
+            return {
+                id: browserId,
+                name: `${platformId}_account`,
+                platform: platformId
+            };
         });
 
-        // 删除临时目录
-        const tempDir = path.dirname(tempConfig.contentFile);
-        if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true });
-        }
+        const publishContent = { ...content, videoFile };
+
+        console.log(`🚀 开始并发多平台发布: ${platforms.join(', ')}`);
+
+        const pub = initializePublisher();
+        const result = await pub.publishMultiPlatformConcurrent(
+            platforms,
+            workflowType,
+            publishContent,
+            template,
+            accounts
+        );
+
+        const response = {
+            success: result.success,
+            message: `并发发布完成: ${result.totalSuccessCount}/${result.totalPlatforms} 个平台成功`,
+            results: result.results,
+            statistics: {
+                totalPlatforms: result.totalPlatforms,
+                successCount: result.totalSuccessCount,
+                failureCount: result.totalFailureCount
+            }
+        };
+
+        res.json(response);
+
     } catch (error) {
-        console.warn('[Cleanup] 清理临时文件失败:', error.message);
+        console.error('❌ 并发多平台发布失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            results: []
+        });
     }
-}
+});
 
-// 获取默认模板
-function getDefaultTemplate(workflowType) {
-    const templates = {
-        video: {
-            description: '{{description}} - 发布于{{date}} #{{account.name}}',
-            location: '{{location}}'
-        },
-        article: {
-            title: '{{title}} - {{account.name}}',
-            content: '{{content}}\n\n发布时间: {{time}}'
-        },
-        music: {
-            title: '{{title}} - 音乐分享',
-            description: '{{description}} #音乐 #{{account.name}}'
-        },
-        audio: {
-            title: '{{title}} - 音频内容',
-            description: '{{description}} #音频 #{{account.name}}'
-        }
-    };
+// 兼容的多平台发布接口
+app.post('/api/workflow/multi-execute', async (req, res) => {
+    // 直接调用并发版本
+    return app._router.handle(Object.assign(req, { url: '/api/workflow/multi-execute-concurrent' }), res);
+});
 
-    return templates[workflowType] || templates.video;
-}
+// 错误处理
+app.use((error, req, res, next) => {
+    console.error('API错误:', error);
+    res.status(500).json({
+        success: false,
+        error: error.message || '服务器内部错误'
+    });
+});
+
+// 404处理
+app.use('*', (req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'API路由不存在'
+    });
+});
 
 // 启动服务器
-app.listen(PORT, () => {
-    console.log(`🚀 RPA Platform 后端服务启动在端口 ${PORT}`);
-    console.log(`📁 上传目录: ${UPLOAD_DIR}`);
-    console.log(`📄 临时目录: ${TEMP_DIR}`);
-    console.log(`📝 日志目录: ${LOGS_DIR}`);
-    console.log(`🔗 Electron API 端点: ${ELECTRON_API_BASE}`);
-});
+app.listen(port, () => {
+    console.log(`🚀 RPA Platform API 启动在端口 ${port}`);
+    console.log(`📊 功能: 并发多平台发布, 文件管理, 平台配置`);
 
-// 优雅退出
-process.on('SIGINT', () => {
-    console.log('\n📤 正在关闭服务器...');
-    process.exit(0);
+    // 延迟初始化
+    setTimeout(() => {
+        try {
+            initializePublisher();
+        } catch (error) {
+            console.error('❌ 发布器初始化失败:', error.message);
+        }
+    }, 1000);
 });
 
 module.exports = app;
