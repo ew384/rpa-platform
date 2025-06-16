@@ -20,10 +20,20 @@ app.use(express.static('public'));
 // 文件上传配置
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = './uploads';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+        // 🔍 这里是根据文件的MIME类型来判断分类
+        let uploadDir = './uploads';
+
+        if (file.mimetype.startsWith('video/')) {
+            // video/mp4, video/avi, video/quicktime 等都会进入这里
+            uploadDir = './uploads/videos';
+        } else if (file.mimetype.startsWith('audio/')) {
+            // audio/mp3, audio/wav, audio/mpeg 等会进入这里
+            uploadDir = './uploads/audios';
+        } else if (file.mimetype.startsWith('image/')) {
+            // image/jpeg, image/png, image/gif 等会进入这里
+            uploadDir = './uploads/images';
         }
+
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
@@ -169,17 +179,39 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 // 获取文件列表
 app.get('/api/files', (req, res) => {
     try {
-        const uploadDir = './uploads';
+        const { type = 'video' } = req.query;
+
+        // 🔍 根据查询参数确定目录
+        const typeMap = {
+            'video': './uploads/videos',
+            'audio': './uploads/audios',
+            'image': './uploads/images'
+        };
+
+        const uploadDir = typeMap[type] || './uploads/videos';
+
+        // 🔧 修复：检查目录是否存在
         if (!fs.existsSync(uploadDir)) {
+            console.log(`📁 目录不存在，创建: ${uploadDir}`);
+            fs.mkdirSync(uploadDir, { recursive: true });
             return res.json({ success: true, files: [] });
         }
 
+        // 🔧 修复：完整的文件处理逻辑
         const files = fs.readdirSync(uploadDir)
             .filter(filename => {
                 const ext = path.extname(filename).toLowerCase();
-                return ['.mp4', '.avi', '.mov', '.wmv'].includes(ext);
+                if (type === 'video') {
+                    return ['.mp4', '.avi', '.mov', '.wmv', '.webm'].includes(ext);
+                } else if (type === 'audio') {
+                    return ['.mp3', '.wav', '.m4a', '.aac'].includes(ext);
+                } else if (type === 'image') {
+                    return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+                }
+                return false;
             })
             .map(filename => {
+                // 🔧 修复：构建完整的文件信息
                 const filepath = path.join(uploadDir, filename);
                 const stats = fs.statSync(filepath);
                 return {
@@ -187,19 +219,32 @@ app.get('/api/files', (req, res) => {
                     filename: filename,
                     name: filename,
                     size: stats.size,
-                    type: 'video',
+                    type: type,
                     createdAt: stats.birthtime.toISOString()
                 };
             })
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        res.json({ success: true, files });
+        console.log(`📁 扫描 ${uploadDir}: 找到 ${files.length} 个${type}文件`);
+
+        // 🔧 修复：返回响应
+        res.json({
+            success: true,
+            files: files,
+            directory: uploadDir,
+            count: files.length
+        });
+
     } catch (error) {
+        // 🔧 修复：错误处理
         console.error('❌ 获取文件列表失败:', error.message);
+        console.error('❌ 错误详情:', error);
+
         res.status(500).json({
             success: false,
             error: error.message,
-            files: []
+            files: [],
+            directory: req.query.type ? typeMap[req.query.type] : './uploads/videos'
         });
     }
 });
@@ -265,7 +310,30 @@ app.post('/api/workflow/multi-execute-concurrent', async (req, res) => {
                 error: '至少选择一个发布平台'
             });
         }
+        // 🔧 修复：根据工作流类型构建完整文件路径
+        let fullVideoPath;
+        if (videoFile) {
+            const typeDir = workflowType === 'video' ? 'videos' :
+                workflowType === 'audio' ? 'audios' :
+                    workflowType === 'image' ? 'images' : 'videos';
 
+            fullVideoPath = path.join(__dirname, 'uploads', typeDir, videoFile);
+
+            console.log(`📁 构建文件路径: ${videoFile} → ${fullVideoPath}`);
+
+            // 🔧 验证文件是否存在
+            if (!fs.existsSync(fullVideoPath)) {
+                console.error(`❌ 文件不存在: ${fullVideoPath}`);
+                return res.status(400).json({
+                    success: false,
+                    error: `文件不存在: ${fullVideoPath}`,
+                    requestedFile: videoFile,
+                    expectedPath: fullVideoPath
+                });
+            }
+
+            console.log(`✅ 文件验证通过: ${fullVideoPath}`);
+        }
         // 构建账号列表
         const accounts = platforms.map(platformId => {
             const browserId = browserMapping[platformId];
@@ -279,15 +347,22 @@ app.post('/api/workflow/multi-execute-concurrent', async (req, res) => {
             };
         });
 
-        const publishContent = { ...content, videoFile };
+        const publishContent = {
+            ...content,
+            videoFile: fullVideoPath  // 使用完整路径而不是文件名
+        };
 
         console.log(`🚀 开始并发多平台发布: ${platforms.join(', ')}`);
+        console.log(`📄 发布内容:`, {
+            ...publishContent,
+            videoFile: `${fullVideoPath} (${fs.existsSync(fullVideoPath) ? '存在' : '不存在'})`
+        });
 
         const pub = initializePublisher();
         const result = await pub.publishMultiPlatformConcurrent(
             platforms,
             workflowType,
-            publishContent,
+            publishContent,  // 包含完整路径的内容
             template,
             accounts
         );
@@ -300,11 +375,17 @@ app.post('/api/workflow/multi-execute-concurrent', async (req, res) => {
                 totalPlatforms: result.totalPlatforms,
                 successCount: result.totalSuccessCount,
                 failureCount: result.totalFailureCount
+            },
+            // 🔧 新增：调试信息
+            debug: {
+                originalVideoFile: videoFile,
+                resolvedVideoPath: fullVideoPath,
+                fileExists: fs.existsSync(fullVideoPath),
+                workflowType: workflowType
             }
         };
 
         res.json(response);
-
     } catch (error) {
         console.error('❌ 并发多平台发布失败:', error.message);
         res.status(500).json({
