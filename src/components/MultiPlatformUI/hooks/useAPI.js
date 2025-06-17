@@ -124,10 +124,16 @@ export const useAPI = () => {
                     name: '小红书',
                     icon: '📝',
                     color: 'bg-red-500',
-                    status: 'testing',
+                    status: 'stable',  // 🔧 从 'testing' 改为 'stable'
                     fields: {
-                        title: { required: true, maxLength: 20 },
+                        title: { required: true, maxLength: 20 },  // 🔧 关键：20字符限制
                         description: { required: true, maxLength: 1000 }
+                    },
+                    features: {
+                        supportLocation: true,
+                        supportEmoji: true,
+                        supportHashtags: true,
+                        needWaitFormActivation: true
                     }
                 },
                 {
