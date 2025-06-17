@@ -553,3 +553,89 @@
     border-color: #374151;
   }
 }
+/* 在 src/index.css 中添加这些样式来优化iframe中的显示 */
+
+/* 当在iframe中运行时的样式优化 */
+.iframe-optimized {
+  /* 整体字体缩放 */
+  font-size: 14px;
+}
+
+.iframe-optimized .text-xl {
+  font-size: 16px !important;
+}
+
+.iframe-optimized .text-lg {
+  font-size: 15px !important;
+}
+
+.iframe-optimized .text-2xl {
+  font-size: 18px !important;
+}
+
+.iframe-optimized .text-sm {
+  font-size: 12px !important;
+}
+
+.iframe-optimized .text-xs {
+  font-size: 10px !important;
+}
+
+/* 状态栏样式优化 */
+.status-bar-compact {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.status-bar-compact > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .status-bar-compact {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* 紧凑间距 */
+.iframe-optimized .space-y-6 > * + * {
+  margin-top: 1rem !important;
+}
+
+.iframe-optimized .space-y-4 > * + * {
+  margin-top: 0.75rem !important;
+}
+
+.iframe-optimized .p-6 {
+  padding: 1rem !important;
+}
+
+.iframe-optimized .p-4 {
+  padding: 0.75rem !important;
+}
+
+.iframe-optimized .mb-6 {
+  margin-bottom: 1rem !important;
+}
+
+.iframe-optimized .mb-4 {
+  margin-bottom: 0.75rem !important;
+}
+
+/* 按钮尺寸优化 */
+.iframe-optimized .px-6 {
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+.iframe-optimized .py-4 {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}

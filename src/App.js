@@ -77,14 +77,18 @@ const RPAPlatform = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-
+  const [isInIframe, setIsInIframe] = useState(false);
   // 页面加载时恢复登录状态
   useEffect(() => {
     const restoreLoginState = async () => {
       console.log('[App] 应用启动，检查登录状态...');
-
-      if (AuthManager.isInIframe()) {
+      const inIframe = AuthManager.isInIframe();
+      setIsInIframe(inIframe);
+      
+      if (inIframe) {
         console.log('[App] 检测到运行在iframe中，启用持久化登录');
+        // 为iframe环境添加CSS类
+        document.body.classList.add('iframe-optimized');
       }
 
       const savedUser = AuthManager.getLoginState();
@@ -101,6 +105,69 @@ const RPAPlatform = () => {
 
     restoreLoginState();
   }, []);
+
+  // 🔥 新增：iframe高度自适应（精简版）
+  useEffect(() => {
+    if (!AuthManager.isInIframe()) return;
+
+    console.log('[Height] 启动高度监听');
+
+    const reportHeight = () => {
+      const height = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      ) + 100;
+
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'resize',
+          height: height
+        }, '*');
+      }
+    };
+
+    // 初始报告
+    setTimeout(reportHeight, 500);
+
+    // 监听DOM变化
+    const observer = new MutationObserver(() => {
+      setTimeout(reportHeight, 100);
+    });
+    
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true
+    });
+
+    // 定时检查
+    const interval = setInterval(reportHeight, 2000);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, [isLoggedIn]);
+
+  // 🔥 新增：Tab切换高度调整
+  useEffect(() => {
+    if (!AuthManager.isInIframe() || !isLoggedIn) return;
+
+    setTimeout(() => {
+      const height = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      ) + 100;
+
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'resize',
+          height: height,
+          tab: activeTab
+        }, '*');
+      }
+    }, 500);
+  }, [activeTab, isLoggedIn]);
 
   const handleLogin = (username, password) => {
     if (username && password) {
@@ -549,14 +616,38 @@ const RPAPlatform = () => {
       </div>
     );
   };
-
+  const StatusBar = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+      <div className="status-bar-compact">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <span className="text-sm font-medium text-gray-900">刷新数据</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+          <span className="text-sm font-medium text-gray-900">系统就绪</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-600">0 个浏览器实例</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-600">3 个平台</span>
+        </div>
+      </div>
+    </div>
+  );
   // 主内容渲染
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
       case 'multi-platform':
-        return <MultiPlatformUI />;
+        return (
+          <div>
+            <StatusBar />
+            <MultiPlatformUI />
+          </div>
+        );
       case 'history':
         return <HistoryPage />;
       case 'settings':
@@ -595,13 +686,13 @@ const RPAPlatform = () => {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex">
+    <div className={`h-screen bg-gray-50 flex ${isInIframe ? 'iframe-optimized' : ''}`}>
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* 顶部导航 - 浅色主题 */}
+        {/* 顶部导航 - 调整padding */}
         <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4">
+          <div className={`flex items-center justify-between ${isInIframe ? 'px-4 py-3' : 'px-6 py-4'}`}>
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -609,7 +700,7 @@ const RPAPlatform = () => {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className={`font-semibold text-gray-900 ${isInIframe ? 'text-lg' : 'text-xl'}`}>
                 {getPageTitle()}
               </h1>
             </div>
@@ -619,10 +710,14 @@ const RPAPlatform = () => {
                 <Bell className="w-5 h-5" />
               </button>
               <div className="flex items-center space-x-3">
-                <span className="text-sm text-gray-700">欢迎, {currentUser?.name}</span>
+                <span className={`text-gray-700 ${isInIframe ? 'text-xs' : 'text-sm'}`}>
+                  欢迎, {currentUser?.name}
+                </span>
                 <button
                   onClick={handleLogout}
-                  className="text-red-600 hover:text-red-800 text-sm transition-colors px-3 py-1 rounded-lg hover:bg-red-50"
+                  className={`text-red-600 hover:text-red-800 transition-colors rounded-lg hover:bg-red-50 ${
+                    isInIframe ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1'
+                  }`}
                 >
                   登出
                 </button>
@@ -631,8 +726,8 @@ const RPAPlatform = () => {
           </div>
         </header>
 
-        {/* 主内容区域 */}
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* 主内容区域 - 调整padding */}
+        <main className={`flex-1 overflow-y-auto ${isInIframe ? 'p-4' : 'p-6'}`}>
           <div className="min-h-full">
             {renderContent()}
           </div>
