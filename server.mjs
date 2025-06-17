@@ -1,12 +1,19 @@
 // server.js 
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const cors = require('cors');
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import cors from 'cors';
+import fetch from 'node-fetch';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-// 🔧 使用正确的路径导入（CommonJS）
-const { UniversalPublisher } = require('../electron_browser/automation/core/index.js');
+// 获取 __dirname (ES modules 中需要手动构建)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// 🔧 使用正确的路径导入（ES modules）
+import { UniversalPublisher } from '../electron_browser/automation/core/index.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -123,7 +130,6 @@ app.get('/api/platforms', async (req, res) => {
 // 获取浏览器实例
 app.get('/api/browsers', async (req, res) => {
     try {
-        const fetch = require('node-fetch');
         const response = await fetch('http://localhost:9528/api/browsers');
         const data = await response.json();
 
@@ -412,7 +418,7 @@ app.use((error, req, res, next) => {
 });
 
 // 404处理
-app.use('*', (req, res) => {
+app.use((req, res) => {
     res.status(404).json({
         success: false,
         error: 'API路由不存在'
@@ -434,4 +440,4 @@ app.listen(port, () => {
     }, 1000);
 });
 
-module.exports = app;
+export default app;
