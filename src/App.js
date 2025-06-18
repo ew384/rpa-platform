@@ -469,13 +469,7 @@ const RPAPlatform = () => {
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">底部测试内容</h3>
-          <p className="text-gray-600">这是页面底部的测试内容，用于验证滚动是否正常工作。</p>
-          <div style={{ height: '200px', background: '#f0f0f0', margin: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span>如果你能看到这里，说明滚动正常工作</span>
-          </div>
-        </div>
+
       </div>
     );
   };
