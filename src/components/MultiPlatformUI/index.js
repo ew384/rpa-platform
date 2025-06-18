@@ -64,7 +64,7 @@ const MultiPlatformUI = () => {
     // 渲染加载状态
     if (isLoading) {
         return (
-            <div className="max-w-7xl mx-auto p-6 bg-white min-h-screen">
+            <div className="max-w-7xl mx-auto p-6 bg-white">
                 <div className="flex items-center justify-center h-64">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -97,7 +97,7 @@ const MultiPlatformUI = () => {
     // 渲染错误状态（改进版）
     if (error && !hasData) {
         return (
-            <div className="max-w-7xl mx-auto p-6 bg-white min-h-screen">
+            <div className="max-w-7xl mx-auto pt-6 px-6 bg-white pb-0">
                 <div className="flex items-center justify-center h-64">
                     <div className="text-center max-w-md">
                         <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />

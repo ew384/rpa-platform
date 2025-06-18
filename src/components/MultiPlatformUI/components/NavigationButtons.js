@@ -129,7 +129,7 @@ const NavigationButtons = ({
     };
 
     return (
-        <div className="flex items-center justify-between pt-6 border-t bg-gray-50 -mx-6 px-6 -mb-6 pb-6">
+        <div className="flex items-center justify-between  py-3 mt-4 border-t bg-gray-50 -mx-6 px-6">
             <button
                 onClick={prevStep}
                 disabled={currentStep === 1}

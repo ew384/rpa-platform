@@ -239,7 +239,7 @@ const RPAPlatform = () => {
             <p className="text-gray-600">多平台自动化发布系统</p>
             {AuthManager.isInIframe() && (
               <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                <p className="text-xs text-blue-700">
+                <p className="text-sm text-blue-700">
                   🔒 已启用持久化登录，切换页面不会丢失登录状态
                 </p>
               </div>
@@ -346,7 +346,7 @@ const RPAPlatform = () => {
             >
               <Video className="w-8 h-8 text-blue-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
               <p className="text-sm font-medium text-gray-900 mb-1">多平台发布</p>
-              <p className="text-xs text-gray-500">一键发布到多个平台</p>
+              <p className="text-sm text-gray-500">一键发布到多个平台</p>
             </button>
 
             <button
@@ -355,7 +355,7 @@ const RPAPlatform = () => {
             >
               <History className="w-8 h-8 text-green-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
               <p className="text-sm font-medium text-gray-900 mb-1">发布历史</p>
-              <p className="text-xs text-gray-500">查看历史发布记录</p>
+              <p className="text-sm text-gray-500">查看历史发布记录</p>
             </button>
 
             <button
@@ -364,7 +364,7 @@ const RPAPlatform = () => {
             >
               <Settings className="w-8 h-8 text-purple-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
               <p className="text-sm font-medium text-gray-900 mb-1">系统设置</p>
-              <p className="text-xs text-gray-500">配置平台和账号</p>
+              <p className="text-sm text-gray-500">配置平台和账号</p>
             </button>
           </div>
         </div>
@@ -385,7 +385,7 @@ const RPAPlatform = () => {
                     }`}></div>
                   <span className="text-sm text-gray-900">{activity.action}</span>
                 </div>
-                <span className="text-xs text-gray-500">{activity.time}</span>
+                <span className="text-sm text-gray-500">{activity.time}</span>
               </div>
             ))}
           </div>
@@ -448,21 +448,21 @@ const RPAPlatform = () => {
               <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
               <div>
                 <p className="text-sm font-medium text-gray-900">API 服务</p>
-                <p className="text-xs text-green-600">正常运行</p>
+                <p className="text-sm text-green-600">正常运行</p>
               </div>
             </div>
             <div className="flex items-center p-3 bg-green-50 rounded-lg">
               <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
               <div>
                 <p className="text-sm font-medium text-gray-900">数据库</p>
-                <p className="text-xs text-green-600">连接正常</p>
+                <p className="text-sm text-green-600">连接正常</p>
               </div>
             </div>
             <div className="flex items-center p-3 bg-yellow-50 rounded-lg">
               <div className="w-3 h-3 bg-yellow-500 rounded-full mr-3"></div>
               <div>
                 <p className="text-sm font-medium text-gray-900">存储空间</p>
-                <p className="text-xs text-yellow-600">使用率 76%</p>
+                <p className="text-sm text-yellow-600">使用率 76%</p>
               </div>
             </div>
           </div>
@@ -527,12 +527,12 @@ const RPAPlatform = () => {
         <div className="p-3 border-b border-gray-100">
           <div className="flex items-center space-x-2">
             <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xs">R</span>
+              <span className="text-white font-bold text-sm">R</span>
             </div>
             {sidebarOpen && (
               <div>
-                <h1 className="font-bold text-gray-900 text-xs">RPA Platform</h1>
-                <p className="text-xs text-gray-500">多平台发布</p>
+                <h1 className="font-bold text-gray-900 text-sm">RPA Platform</h1>
+                <p className="text-sm text-gray-500">多平台发布</p>
               </div>
             )}
           </div>
@@ -547,7 +547,7 @@ const RPAPlatform = () => {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center px-2 py-2 text-xs font-medium rounded-lg transition-colors ${activeTab === item.id
+                className={`w-full flex items-center px-2 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === item.id
                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
@@ -635,12 +635,12 @@ const RPAPlatform = () => {
                 <Bell className="w-5 h-5" />
               </button>
               <div className="flex items-center space-x-3">
-                <span className={`text-gray-700 ${isInIframe ? 'text-xs' : 'text-sm'}`}>
+                <span className={`text-gray-700 ${isInIframe ? 'text-sm' : 'text-sm'}`}>
                   欢迎, {currentUser?.name}
                 </span>
                 <button
                   onClick={handleLogout}
-                  className={`text-red-600 hover:text-red-800 transition-colors rounded-lg hover:bg-red-50 ${isInIframe ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1'
+                  className={`text-red-600 hover:text-red-800 transition-colors rounded-lg hover:bg-red-50 ${isInIframe ? 'text-sm px-2 py-1' : 'text-sm px-3 py-1'
                     }`}
                 >
                   登出
