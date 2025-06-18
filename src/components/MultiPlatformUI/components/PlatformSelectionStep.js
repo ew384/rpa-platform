@@ -47,29 +47,21 @@ const PlatformSelectionStep = ({
                                 }`}
                         >
                             <div className="text-center">
-                                <div className={`w-12 h-12 rounded-lg mx-auto mb-3 flex items-center justify-center ${config?.color || 'bg-gray-500'
-                                    }`}>
-                                    <span className="text-2xl">{config?.icon || '📱'}</span>
+                                <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                                    {platform.id === 'wechat' ? (
+                                        <img src="/logos/wechat_shipinghao.png" alt="微信视频号" className="w-16 h-16 object-contain" />
+                                    ) : platform.id === 'douyin' ? (
+                                        <img src="/logos/douyin.png" alt="抖音" className="w-16 h-16 object-contain" />
+                                    ) : platform.id === 'xiaohongshu' ? (
+                                        <img src="/logos/xiaohongshu.jpg" alt="小红书" className="w-16 h-16 object-contain" />
+                                    ) : platform.id === 'kuaishou' ? (
+                                        <img src="/logos/kuaishou.png" alt="快手" className="w-16 h-16 object-contain" />
+                                    ) : (
+                                        <span className="text-3xl">{config?.icon || '📱'}</span>
+                                    )}
                                 </div>
                                 <h3 className="font-semibold text-gray-900 mb-1">{platform.name}</h3>
-                                <p className="text-xs text-gray-500 mb-2">
-                                    {config?.description || `发布到${platform.name}`}
-                                </p>
-                                <div className="mb-3">
-                                    <span className={`inline-block px-2 py-1 text-xs rounded-full ${platform.status === 'stable'
-                                        ? 'bg-green-100 text-green-800'
-                                        : platform.status === 'testing'
-                                            ? 'bg-yellow-100 text-yellow-800'
-                                            : platform.status === 'beta'
-                                                ? 'bg-blue-100 text-blue-800'
-                                                : 'bg-gray-100 text-gray-800'
-                                        }`}>
-                                        {platform.status === 'stable' ? '稳定' :
-                                            platform.status === 'testing' ? '测试中' :
-                                                platform.status === 'beta' ? '公测版' :
-                                                    '计划中'}
-                                    </span>
-                                </div>
+
                                 {isSelected && (
                                     <CheckCircle className="w-6 h-6 text-blue-500 mx-auto" />
                                 )}

@@ -553,12 +553,12 @@
     border-color: #374151;
   }
 }
+
 /* 在 src/index.css 中添加这些样式来优化iframe中的显示 */
 
-/* 当在iframe中运行时的样式优化 */
 .iframe-optimized {
   /* 整体字体缩放 */
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .iframe-optimized .text-xl {
@@ -581,6 +581,20 @@
   font-size: 10px !important;
 }
 
+body.iframe-optimized {
+  min-width: auto !important;
+  max-width: 100% !important;
+  overflow-x: auto;
+}
+
+.iframe-optimized .flex {
+  flex-wrap: wrap;
+}
+
+.iframe-optimized .grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+}
+
 /* 状态栏样式优化 */
 .status-bar-compact {
   display: flex;
@@ -591,7 +605,7 @@
   min-width: 0;
 }
 
-.status-bar-compact > * {
+.status-bar-compact>* {
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -605,11 +619,11 @@
 }
 
 /* 紧凑间距 */
-.iframe-optimized .space-y-6 > * + * {
+.iframe-optimized .space-y-6>*+* {
   margin-top: 1rem !important;
 }
 
-.iframe-optimized .space-y-4 > * + * {
+.iframe-optimized .space-y-4>*+* {
   margin-top: 0.75rem !important;
 }
 

@@ -302,169 +302,178 @@ const RPAPlatform = () => {
     ];
 
     return (
-      <div className="space-y-6 pb-20">
-        {/* 欢迎信息 - 浅色渐变 */}
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white">
-          <h2 className="text-2xl font-bold mb-2">欢迎回来, {currentUser?.name}!</h2>
-          <p className="text-blue-100">
-            今天是 {new Date().toLocaleDateString('zh-CN', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              weekday: 'long'
-            })}
-          </p>
-          <div className="mt-3 text-sm text-blue-100">
-            <p>登录时间: {currentUser?.loginTime ? new Date(currentUser.loginTime).toLocaleString('zh-CN') : '未知'}</p>
-          </div>
-        </div>
-
-        {/* 统计卡片 - 更浅的背景 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat) => (
-            <div key={stat.name} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-              <div className="flex items-center">
-                <div className={`flex-shrink-0 ${stat.bg} p-3 rounded-xl`}>
-                  <stat.icon className={`w-6 h-6 ${stat.color}`} />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">{stat.name}</p>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                </div>
-              </div>
+      <div className="space-y-6 pb-20" style={{ minHeight: 'calc(100vh + 400px)' }}>
+        <div className="space-y-6 pb-20">
+          {/* 欢迎信息 - 浅色渐变 */}
+          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white">
+            <h2 className="text-2xl font-bold mb-2">欢迎回来, {currentUser?.name}!</h2>
+            <p className="text-blue-100">
+              今天是 {new Date().toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+              })}
+            </p>
+            <div className="mt-3 text-sm text-blue-100">
+              <p>登录时间: {currentUser?.loginTime ? new Date(currentUser.loginTime).toLocaleString('zh-CN') : '未知'}</p>
             </div>
-          ))}
-        </div>
-
-        {/* 快速操作 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">快速操作</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button
-              onClick={() => setActiveTab('multi-platform')}
-              className="p-6 border-2 border-dashed border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all group"
-            >
-              <Video className="w-8 h-8 text-blue-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
-              <p className="text-sm font-medium text-gray-900 mb-1">多平台发布</p>
-              <p className="text-sm text-gray-500">一键发布到多个平台</p>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('history')}
-              className="p-6 border-2 border-dashed border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all group"
-            >
-              <History className="w-8 h-8 text-green-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
-              <p className="text-sm font-medium text-gray-900 mb-1">发布历史</p>
-              <p className="text-sm text-gray-500">查看历史发布记录</p>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="p-6 border-2 border-dashed border-purple-200 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all group"
-            >
-              <Settings className="w-8 h-8 text-purple-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
-              <p className="text-sm font-medium text-gray-900 mb-1">系统设置</p>
-              <p className="text-sm text-gray-500">配置平台和账号</p>
-            </button>
           </div>
-        </div>
 
-        {/* 最近活动 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">最近活动</h3>
-          <div className="space-y-3">
-            {[
-              { action: '发布视频到微信视频号', time: '2分钟前', status: 'success' },
-              { action: '发布视频到抖音', time: '5分钟前', status: 'success' },
-              { action: '发布视频到小红书', time: '8分钟前', status: 'failed' },
-              { action: '发布视频到快手', time: '10分钟前', status: 'success' }
-            ].map((activity, index) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-2 h-2 rounded-full ${activity.status === 'success' ? 'bg-green-500' : 'bg-red-500'
-                    }`}></div>
-                  <span className="text-sm text-gray-900">{activity.action}</span>
+          {/* 统计卡片 - 更浅的背景 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {stats.map((stat) => (
+              <div key={stat.name} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                <div className="flex items-center">
+                  <div className={`flex-shrink-0 ${stat.bg} p-3 rounded-xl`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">{stat.name}</p>
+                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  </div>
                 </div>
-                <span className="text-sm text-gray-500">{activity.time}</span>
               </div>
             ))}
           </div>
-        </div>
 
-        {/* 新增：更多内容区域来测试滚动 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">数据趋势</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-3">本月发布统计</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">微信视频号</span>
-                  <span className="font-medium">45 个</span>
+          {/* 快速操作 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">快速操作</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={() => setActiveTab('multi-platform')}
+                className="p-6 border-2 border-dashed border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all group"
+              >
+                <Video className="w-8 h-8 text-blue-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium text-gray-900 mb-1">多平台发布</p>
+                <p className="text-sm text-gray-500">一键发布到多个平台</p>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('history')}
+                className="p-6 border-2 border-dashed border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all group"
+              >
+                <History className="w-8 h-8 text-green-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium text-gray-900 mb-1">发布历史</p>
+                <p className="text-sm text-gray-500">查看历史发布记录</p>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="p-6 border-2 border-dashed border-purple-200 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all group"
+              >
+                <Settings className="w-8 h-8 text-purple-500 mx-auto mb-3 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium text-gray-900 mb-1">系统设置</p>
+                <p className="text-sm text-gray-500">配置平台和账号</p>
+              </button>
+            </div>
+          </div>
+
+          {/* 最近活动 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">最近活动</h3>
+            <div className="space-y-3">
+              {[
+                { action: '发布视频到微信视频号', time: '2分钟前', status: 'success' },
+                { action: '发布视频到抖音', time: '5分钟前', status: 'success' },
+                { action: '发布视频到小红书', time: '8分钟前', status: 'failed' },
+                { action: '发布视频到快手', time: '10分钟前', status: 'success' }
+              ].map((activity, index) => (
+                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-2 h-2 rounded-full ${activity.status === 'success' ? 'bg-green-500' : 'bg-red-500'
+                      }`}></div>
+                    <span className="text-sm text-gray-900">{activity.action}</span>
+                  </div>
+                  <span className="text-sm text-gray-500">{activity.time}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">抖音</span>
-                  <span className="font-medium">38 个</span>
+              ))}
+            </div>
+          </div>
+
+          {/* 新增：更多内容区域来测试滚动 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">数据趋势</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-3">本月发布统计</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">微信视频号</span>
+                    <span className="font-medium">45 个</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">抖音</span>
+                    <span className="font-medium">38 个</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">小红书</span>
+                    <span className="font-medium">32 个</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">快手</span>
+                    <span className="font-medium">28 个</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">小红书</span>
-                  <span className="font-medium">32 个</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">快手</span>
-                  <span className="font-medium">28 个</span>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-3">平台表现</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">平均成功率</span>
+                    <span className="font-medium text-green-600">95.2%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">平均发布时间</span>
+                    <span className="font-medium">2.3 分钟</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">错误重试率</span>
+                    <span className="font-medium">4.8%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">用户满意度</span>
+                    <span className="font-medium text-green-600">4.8/5.0</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-3">平台表现</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">平均成功率</span>
-                  <span className="font-medium text-green-600">95.2%</span>
+          </div>
+
+          {/* 新增：系统状态 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">系统状态</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex items-center p-3 bg-green-50 rounded-lg">
+                <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">API 服务</p>
+                  <p className="text-sm text-green-600">正常运行</p>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">平均发布时间</span>
-                  <span className="font-medium">2.3 分钟</span>
+              </div>
+              <div className="flex items-center p-3 bg-green-50 rounded-lg">
+                <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">数据库</p>
+                  <p className="text-sm text-green-600">连接正常</p>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">错误重试率</span>
-                  <span className="font-medium">4.8%</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">用户满意度</span>
-                  <span className="font-medium text-green-600">4.8/5.0</span>
+              </div>
+              <div className="flex items-center p-3 bg-yellow-50 rounded-lg">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full mr-3"></div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">存储空间</p>
+                  <p className="text-sm text-yellow-600">使用率 76%</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        {/* 新增：系统状态 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">系统状态</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center p-3 bg-green-50 rounded-lg">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">API 服务</p>
-                <p className="text-sm text-green-600">正常运行</p>
-              </div>
-            </div>
-            <div className="flex items-center p-3 bg-green-50 rounded-lg">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">数据库</p>
-                <p className="text-sm text-green-600">连接正常</p>
-              </div>
-            </div>
-            <div className="flex items-center p-3 bg-yellow-50 rounded-lg">
-              <div className="w-3 h-3 bg-yellow-500 rounded-full mr-3"></div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">存储空间</p>
-                <p className="text-sm text-yellow-600">使用率 76%</p>
-              </div>
-            </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">底部测试内容</h3>
+          <p className="text-gray-600">这是页面底部的测试内容，用于验证滚动是否正常工作。</p>
+          <div style={{ height: '200px', background: '#f0f0f0', margin: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span>如果你能看到这里，说明滚动正常工作</span>
           </div>
         </div>
       </div>
@@ -651,7 +660,7 @@ const RPAPlatform = () => {
         </header>
 
         {/* 主内容区域 - 调整padding */}
-        <main className={`flex-1 overflow-y-auto ${isInIframe ? 'p-4' : 'p-6'}`}>
+        <main className={`flex-1 overflow-y-auto ${isInIframe ? 'p-4' : 'p-6'}`} style={{ height: '100%' }}>
           <div className="min-h-full">
             {renderContent()}
           </div>
