@@ -286,24 +286,6 @@ const MultiPlatformUI = () => {
                 selectedPlatforms={selectedPlatforms}
                 executionResults={executionResults}
             />
-
-            {/* 调试信息 (开发环境) */}
-            {process.env.NODE_ENV === 'development' && (
-                <div className="mt-8 p-4 bg-gray-100 rounded-lg text-xs text-gray-600">
-                    <details>
-                        <summary className="cursor-pointer font-medium">调试信息</summary>
-                        <div className="mt-2 space-y-1">
-                            <div>平台配置: {Object.keys(platformConfigs).length} 个</div>
-                            <div>可用平台: {availablePlatforms.length} 个</div>
-                            <div>浏览器实例: {availableBrowsers.length} 个</div>
-                            <div>已上传文件: {uploadedFiles.length} 个</div>
-                            <div>当前步骤: {currentStep}/5</div>
-                            <div>选中平台: {selectedPlatforms.join(', ') || '无'}</div>
-                            <div>系统状态: {isReady ? '就绪' : '初始化中'}</div>
-                        </div>
-                    </details>
-                </div>
-            )}
         </div>
     );
 };

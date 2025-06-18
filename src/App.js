@@ -84,7 +84,7 @@ const RPAPlatform = () => {
       console.log('[App] 应用启动，检查登录状态...');
       const inIframe = AuthManager.isInIframe();
       setIsInIframe(inIframe);
-      
+
       if (inIframe) {
         console.log('[App] 检测到运行在iframe中，启用持久化登录');
         // 为iframe环境添加CSS类
@@ -133,7 +133,7 @@ const RPAPlatform = () => {
     const observer = new MutationObserver(() => {
       setTimeout(reportHeight, 100);
     });
-    
+
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -467,36 +467,6 @@ const RPAPlatform = () => {
             </div>
           </div>
         </div>
-
-        {/* 新增：操作日志 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">操作日志</h3>
-          <div className="space-y-3">
-            {[
-              { user: 'admin', action: '创建了新的发布模板', time: '2025-06-17 14:30:25', type: 'create' },
-              { user: 'user01', action: '执行了多平台发布任务', time: '2025-06-17 14:28:12', type: 'execute' },
-              { user: 'admin', action: '修改了平台配置', time: '2025-06-17 14:25:03', type: 'update' },
-              { user: 'user02', action: '上传了新的视频文件', time: '2025-06-17 14:22:18', type: 'upload' },
-              { user: 'admin', action: '备份了系统数据', time: '2025-06-17 14:20:45', type: 'backup' },
-              { user: 'user01', action: '查看了发布历史', time: '2025-06-17 14:18:32', type: 'view' }
-            ].map((log, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-2 h-2 rounded-full ${log.type === 'create' ? 'bg-green-500' :
-                      log.type === 'execute' ? 'bg-blue-500' :
-                        log.type === 'update' ? 'bg-yellow-500' :
-                          log.type === 'upload' ? 'bg-purple-500' :
-                            log.type === 'backup' ? 'bg-orange-500' : 'bg-gray-500'
-                    }`}></div>
-                  <div>
-                    <span className="text-sm text-gray-900">{log.user} {log.action}</span>
-                  </div>
-                </div>
-                <span className="text-xs text-gray-500">{log.time}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     );
   };
@@ -578,8 +548,8 @@ const RPAPlatform = () => {
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center px-2 py-2 text-xs font-medium rounded-lg transition-colors ${activeTab === item.id
-                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
               >
                 <item.icon className="w-4 h-4 flex-shrink-0" />
@@ -589,53 +559,9 @@ const RPAPlatform = () => {
           })}
         </nav>
 
-        {/* 用户信息区域 */}
-        <div className="p-3 border-t border-gray-100">
-          <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center">
-              <User className="w-3 h-3 text-gray-600" />
-            </div>
-            {sidebarOpen && (
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-gray-900 truncate">{currentUser?.name}</p>
-                <p className="text-xs text-gray-500">{currentUser?.role}</p>
-              </div>
-            )}
-          </div>
-
-          {sidebarOpen && (
-            <button
-              onClick={handleLogout}
-              className="mt-2 w-full flex items-center justify-center px-2 py-1.5 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <LogOut className="w-3 h-3 mr-1" />
-              登出
-            </button>
-          )}
-        </div>
       </div>
     );
   };
-  const StatusBar = () => (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-      <div className="status-bar-compact">
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-          <span className="text-sm font-medium text-gray-900">刷新数据</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-          <span className="text-sm font-medium text-gray-900">系统就绪</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600">0 个浏览器实例</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600">3 个平台</span>
-        </div>
-      </div>
-    </div>
-  );
   // 主内容渲染
   const renderContent = () => {
     switch (activeTab) {
@@ -644,7 +570,6 @@ const RPAPlatform = () => {
       case 'multi-platform':
         return (
           <div>
-            <StatusBar />
             <MultiPlatformUI />
           </div>
         );
@@ -715,9 +640,8 @@ const RPAPlatform = () => {
                 </span>
                 <button
                   onClick={handleLogout}
-                  className={`text-red-600 hover:text-red-800 transition-colors rounded-lg hover:bg-red-50 ${
-                    isInIframe ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1'
-                  }`}
+                  className={`text-red-600 hover:text-red-800 transition-colors rounded-lg hover:bg-red-50 ${isInIframe ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1'
+                    }`}
                 >
                   登出
                 </button>
