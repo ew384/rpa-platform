@@ -14,7 +14,7 @@ const FileUploadStep = ({
     setCurrentStep,
     refreshData
 }) => {
-    const API_BASE = 'http://localhost:3001/api';
+    const API_BASE = 'http://localhost:3211/api';
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];

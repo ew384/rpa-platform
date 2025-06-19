@@ -60,7 +60,7 @@ install_dependencies() {
 # 开发模式
 start_dev() {
     print_message $BLUE "🚀 启动开发服务器..."
-    print_message $YELLOW "📝 开发服务器将在 http://localhost:3000 启动"
+    print_message $YELLOW "📝 开发服务器将在 http://localhost:3210 启动"
     print_message $YELLOW "📝 测试账号: admin/admin 或 user/user"
     
     # 设置环境变量
@@ -142,8 +142,8 @@ preview_production() {
         exit 1
     fi
     
-    print_message $GREEN "🌐 预览服务器将在 http://localhost:3000 启动"
-    npx serve -s build -l 3000
+    print_message $GREEN "🌐 预览服务器将在 http://localhost:3210 启动"
+    npx serve -s build -l 3210
 }
 
 # 清理项目
@@ -179,7 +179,7 @@ show_help() {
 使用方法: $0 [选项]
 
 选项:
-  dev       启动开发服务器 (默认端口: 3000)
+  dev       启动开发服务器 (默认端口: 3210)
   build     构建生产版本
   preview   预览生产版本
   docker    使用Docker启动 (端口: 80)
@@ -201,7 +201,7 @@ show_help() {
   - 普通用户: user/user
 
 访问地址:
-  - 开发模式: http://localhost:3000
+  - 开发模式: http://localhost:3210
   - Docker模式: http://localhost
 
 EOF

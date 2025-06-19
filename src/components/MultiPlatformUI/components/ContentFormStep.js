@@ -11,7 +11,7 @@ const ContentFormStep = ({
     contentPreviews,
     setContentPreviews
 }) => {
-    const API_BASE = 'http://localhost:3001/api';
+    const API_BASE = 'http://localhost:3211/api';
 
     const updateContentForm = (field, value) => {
         setContentForm(prev => ({

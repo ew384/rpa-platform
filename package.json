@@ -22,7 +22,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "npm start",
-    "preview": "npm run build && npx serve -s build -l 3000",
+    "preview": "npm run build && npx serve -s build -l 3210",
     "docker:build": "docker build -t flow-rpa-platform .",
     "docker:run": "docker run -p 80:80 flow-rpa-platform",
     "docker:dev": "docker-compose up --build",
@@ -60,7 +60,7 @@
     "prettier": "^3.0.0",
     "tailwindcss": "^3.3.0"
   },
-  "proxy": "http://localhost:3001",
+  "proxy": "http://localhost:3211",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=8.0.0"

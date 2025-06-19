@@ -116,7 +116,7 @@ const MultiPlatformUI = () => {
                             <div className="text-left p-3 bg-gray-50 rounded-md text-sm">
                                 <h3 className="font-medium text-gray-900 mb-2">故障排除:</h3>
                                 <ul className="text-gray-600 space-y-1 text-xs">
-                                    <li>• 确保后端服务运行在 localhost:3001</li>
+                                    <li>• 确保后端服务运行在 localhost:3211</li>
                                     <li>• 检查网络连接</li>
                                     <li>• 查看浏览器控制台错误信息</li>
                                     <li>• 确认 CORS 配置正确</li>

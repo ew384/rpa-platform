@@ -16,7 +16,7 @@ const __dirname = dirname(__filename);
 import { UniversalPublisher } from '../electron_browser/automation/core/index.js';
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3211;
 
 // 中间件
 app.use(cors());
@@ -71,7 +71,7 @@ const initializePublisher = () => {
                 electronApiUrl: 'http://localhost:9528',
                 enableConcurrency: true,
                 maxConcurrentPlatforms: 4,
-                timeout: 30000
+                timeout: 32100
             });
             console.log('✅ UniversalPublisher 初始化成功');
         } catch (error) {
