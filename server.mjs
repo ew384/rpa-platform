@@ -14,7 +14,8 @@ const __dirname = dirname(__filename);
 
 // 🔧 使用正确的路径导入（ES modules）
 import { UniversalPublisher } from '../electron_browser/automation/core/index.js';
-
+import { DouyinDownloader } from '../electron_browser/automation/engines/downloaders/douyin-downloader.js';
+import { ChromeController } from '../electron_browser/automation/core/chrome-controller.js';
 const app = express();
 const port = process.env.PORT || 3211;
 
@@ -408,6 +409,229 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
     return app._router.handle(Object.assign(req, { url: '/api/workflow/multi-execute-concurrent' }), res);
 });
 
+
+// 在现有的API路由之后，app.listen之前添加以下路由：
+
+// ==================== 视频下载API ====================
+
+// 抖音视频下载接口
+app.post('/api/download/douyin', async (req, res) => {
+    console.log('📥 收到抖音视频下载请求');
+
+    try {
+        const { url, outputDir } = req.body;
+
+        // 参数验证
+        if (!url) {
+            return res.status(400).json({
+                success: false,
+                error: '抖音视频URL必填',
+                code: 'MISSING_URL'
+            });
+        }
+
+        // URL格式简单验证
+        if (!url.includes('douyin.com')) {
+            return res.status(400).json({
+                success: false,
+                error: '不是有效的抖音视频URL',
+                code: 'INVALID_URL',
+                expectedFormats: [
+                    'https://www.douyin.com/video/xxxxxxxxx',
+                    'https://v.douyin.com/xxxxxxxx'
+                ]
+            });
+        }
+
+        console.log(`🎯 开始下载抖音视频: ${url}`);
+
+        // 创建ChromeController和下载器
+        const chromeController = new ChromeController({
+            electronApiUrl: 'http://localhost:9528',
+            timeout: 30000
+        });
+
+        const downloader = new DouyinDownloader(chromeController);
+
+        // 执行下载
+        const result = await downloader.downloadVideo(
+            url,
+            outputDir || '/oper/work/endian/rpa-platform/downloads/douyin/'
+        );
+
+        console.log(`✅ 抖音视频下载成功: ${result.fileName}`);
+
+        res.json({
+            success: true,
+            message: '抖音视频下载成功',
+            result: {
+                fileName: result.fileName,
+                filePath: result.filePath,
+                fileSize: result.fileSize,
+                fileSizeFormatted: formatFileSize(result.fileSize),
+                originalUrl: result.originalUrl,
+                videoUrl: result.videoUrl.substring(0, 100) + '...', // 截断显示
+                downloadedAt: new Date().toISOString()
+            },
+            timing: {
+                completedAt: Date.now()
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ 抖音下载API失败:', error.message);
+
+        // 错误分类
+        let errorCode = 'DOWNLOAD_FAILED';
+        let statusCode = 500;
+
+        if (error.message.includes('会话创建失败')) {
+            errorCode = 'BROWSER_SESSION_FAILED';
+            statusCode = 503;
+        } else if (error.message.includes('页面导航失败')) {
+            errorCode = 'PAGE_NAVIGATION_FAILED';
+            statusCode = 502;
+        } else if (error.message.includes('视频URL提取失败')) {
+            errorCode = 'VIDEO_URL_EXTRACTION_FAILED';
+            statusCode = 404;
+        } else if (error.message.includes('视频下载失败')) {
+            errorCode = 'VIDEO_DOWNLOAD_FAILED';
+            statusCode = 502;
+        }
+
+        res.status(statusCode).json({
+            success: false,
+            error: error.message,
+            code: errorCode,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// 获取下载文件列表
+app.get('/api/download/douyin/files', async (req, res) => {
+    try {
+        const downloadDir = '/opt/work/endian/rpa-platform/downloads/douyin/';
+
+        // 检查目录是否存在
+        if (!fs.existsSync(downloadDir)) {
+            return res.json({
+                success: true,
+                files: [],
+                total: 0,
+                directory: downloadDir,
+                message: '下载目录不存在'
+            });
+        }
+
+        // 读取文件列表
+        const files = fs.readdirSync(downloadDir)
+            .filter(filename => {
+                const ext = path.extname(filename).toLowerCase();
+                return ['.mp4', '.avi', '.mov', '.wmv', '.webm'].includes(ext);
+            })
+            .map(filename => {
+                const filepath = path.join(downloadDir, filename);
+                const stats = fs.statSync(filepath);
+                return {
+                    filename: filename,
+                    size: stats.size,
+                    sizeFormatted: formatFileSize(stats.size),
+                    createdAt: stats.birthtime.toISOString(),
+                    modifiedAt: stats.mtime.toISOString(),
+                    isVideo: true
+                };
+            })
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // 按创建时间倒序
+
+        console.log(`📁 扫描下载目录: 找到 ${files.length} 个视频文件`);
+
+        res.json({
+            success: true,
+            files: files,
+            total: files.length,
+            directory: downloadDir,
+            totalSize: files.reduce((sum, file) => sum + file.size, 0),
+            totalSizeFormatted: formatFileSize(files.reduce((sum, file) => sum + file.size, 0))
+        });
+
+    } catch (error) {
+        console.error('❌ 获取下载文件列表失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            files: []
+        });
+    }
+});
+
+// 获取下载服务状态
+app.get('/api/download/status', async (req, res) => {
+    try {
+        // 检查浏览器服务状态
+        let browserStatus = 'unknown';
+        try {
+            const response = await fetch('http://localhost:9528/api/health');
+            if (response.ok) {
+                browserStatus = 'running';
+            }
+        } catch (error) {
+            browserStatus = 'offline';
+        }
+
+        // 检查下载目录
+        const downloadDir = '/opt/work/endian/rpa-platform/downloads/douyin/';
+        const directoryExists = fs.existsSync(downloadDir);
+        let directorySize = 0;
+        let fileCount = 0;
+
+        if (directoryExists) {
+            try {
+                const files = fs.readdirSync(downloadDir);
+                fileCount = files.length;
+                directorySize = files.reduce((total, filename) => {
+                    const filePath = path.join(downloadDir, filename);
+                    try {
+                        return total + fs.statSync(filePath).size;
+                    } catch (error) {
+                        return total;
+                    }
+                }, 0);
+            } catch (error) {
+                console.warn('获取目录信息失败:', error.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            status: {
+                service: 'running',
+                browser: browserStatus,
+                directory: {
+                    path: downloadDir,
+                    exists: directoryExists,
+                    fileCount: fileCount,
+                    totalSize: directorySize,
+                    totalSizeFormatted: formatFileSize(directorySize)
+                }
+            },
+            features: {
+                supportedPlatforms: ['douyin'],
+                supportedFormats: ['mp4'],
+                maxFileSize: '500MB',
+                concurrent: false
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // 错误处理
 app.use((error, req, res, next) => {
     console.error('API错误:', error);
@@ -439,5 +663,16 @@ app.listen(port, () => {
         }
     }, 1000);
 });
+// ==================== 工具函数 ====================
+// 在文件末尾添加工具函数：
 
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 export default app;
