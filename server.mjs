@@ -410,13 +410,9 @@ app.post('/api/workflow/multi-execute', async (req, res) => {
 });
 
 
-// 在现有的API路由之后，app.listen之前添加以下路由：
-
-// ==================== 视频下载API ====================
-
-// 抖音视频下载接口
+// 抖音内容下载接口（更新版 - 支持视频和音频+图片）
 app.post('/api/download/douyin', async (req, res) => {
-    console.log('📥 收到抖音视频下载请求');
+    console.log('📥 收到抖音内容下载请求');
 
     try {
         const { url, outputDir } = req.body;
@@ -425,16 +421,16 @@ app.post('/api/download/douyin', async (req, res) => {
         if (!url) {
             return res.status(400).json({
                 success: false,
-                error: '抖音视频URL必填',
+                error: '抖音URL必填',
                 code: 'MISSING_URL'
             });
         }
 
-        // URL格式简单验证
+        // URL格式验证
         if (!url.includes('douyin.com')) {
             return res.status(400).json({
                 success: false,
-                error: '不是有效的抖音视频URL',
+                error: '不是有效的抖音URL',
                 code: 'INVALID_URL',
                 expectedFormats: [
                     'https://www.douyin.com/video/xxxxxxxxx',
@@ -443,7 +439,7 @@ app.post('/api/download/douyin', async (req, res) => {
             });
         }
 
-        console.log(`🎯 开始下载抖音视频: ${url}`);
+        console.log(`🎯 开始下载抖音内容: ${url}`);
 
         // 创建ChromeController和下载器
         const chromeController = new ChromeController({
@@ -453,49 +449,84 @@ app.post('/api/download/douyin', async (req, res) => {
 
         const downloader = new DouyinDownloader(chromeController);
 
-        // 执行下载
-        const result = await downloader.downloadVideo(
+        // 🔧 使用新的downloadContent方法（支持视频和音频+图片）
+        const result = await downloader.downloadContent(
             url,
-            outputDir || '/oper/work/endian/rpa-platform/downloads/douyin/'
+            outputDir || './downloads/douyin/'
         );
 
-        console.log(`✅ 抖音视频下载成功: ${result.fileName}`);
+        console.log(`✅ 抖音内容下载成功: ${result.summary}`);
 
-        res.json({
-            success: true,
-            message: '抖音视频下载成功',
-            result: {
-                fileName: result.fileName,
-                filePath: result.filePath,
-                fileSize: result.fileSize,
-                fileSizeFormatted: formatFileSize(result.fileSize),
-                originalUrl: result.originalUrl,
-                videoUrl: result.videoUrl.substring(0, 100) + '...', // 截断显示
-                downloadedAt: new Date().toISOString()
-            },
-            timing: {
-                completedAt: Date.now()
-            }
-        });
+        // 🔧 根据内容类型返回不同的响应结构
+        if (result.type === 'video') {
+            // 视频下载结果
+            const videoFile = result.files[0];
+            res.json({
+                success: true,
+                message: '抖音视频下载成功',
+                type: 'video',
+                result: {
+                    fileName: videoFile.fileName,
+                    filePath: videoFile.filePath,
+                    fileSize: videoFile.fileSize,
+                    fileSizeFormatted: result.details.fileSize,
+                    duration: result.details.duration,
+                    resolution: result.details.resolution,
+                    originalUrl: url,
+                    downloadedAt: new Date().toISOString()
+                }
+            });
+        } else if (result.type === 'audio_image_mix') {
+            // 音频+图片下载结果
+            const audioFiles = result.files.filter(f => f.type === 'audio');
+            const imageFiles = result.files.filter(f => f.type === 'image');
+
+            res.json({
+                success: true,
+                message: '抖音音频+图片下载成功',
+                type: 'audio_image_mix',
+                result: {
+                    folderName: result.details.folderName,
+                    folderPath: result.folder,
+                    totalFiles: result.details.totalFiles,
+                    totalSize: result.details.totalSize,
+                    audio: audioFiles.length > 0 ? {
+                        fileName: audioFiles[0].fileName,
+                        fileSize: audioFiles[0].fileSize,
+                        duration: result.details.audioDuration
+                    } : null,
+                    images: imageFiles.map(img => ({
+                        fileName: img.fileName,
+                        fileSize: img.fileSize
+                    })),
+                    imageCount: result.details.imageCount,
+                    originalUrl: url,
+                    downloadedAt: new Date().toISOString()
+                }
+            });
+        }
 
     } catch (error) {
         console.error('❌ 抖音下载API失败:', error.message);
 
-        // 错误分类
+        // 🔧 更新错误分类
         let errorCode = 'DOWNLOAD_FAILED';
         let statusCode = 500;
 
-        if (error.message.includes('会话创建失败')) {
-            errorCode = 'BROWSER_SESSION_FAILED';
+        if (error.message.includes('浏览器实例')) {
+            errorCode = 'BROWSER_INSTANCE_FAILED';
             statusCode = 503;
-        } else if (error.message.includes('页面导航失败')) {
-            errorCode = 'PAGE_NAVIGATION_FAILED';
+        } else if (error.message.includes('标签页')) {
+            errorCode = 'TAB_CREATION_FAILED';
             statusCode = 502;
-        } else if (error.message.includes('视频URL提取失败')) {
-            errorCode = 'VIDEO_URL_EXTRACTION_FAILED';
+        } else if (error.message.includes('内容分析')) {
+            errorCode = 'CONTENT_ANALYSIS_FAILED';
             statusCode = 404;
-        } else if (error.message.includes('视频下载失败')) {
-            errorCode = 'VIDEO_DOWNLOAD_FAILED';
+        } else if (error.message.includes('不支持的内容类型')) {
+            errorCode = 'UNSUPPORTED_CONTENT_TYPE';
+            statusCode = 422;
+        } else if (error.message.includes('下载失败')) {
+            errorCode = 'FILE_DOWNLOAD_FAILED';
             statusCode = 502;
         }
 
@@ -508,64 +539,283 @@ app.post('/api/download/douyin', async (req, res) => {
     }
 });
 
-// 获取下载文件列表
+// 🔧 更新获取下载文件列表API（支持音频+图片文件夹）
 app.get('/api/download/douyin/files', async (req, res) => {
     try {
-        const downloadDir = '/opt/work/endian/rpa-platform/downloads/douyin/';
+        const downloadDir = './downloads/douyin/';
 
-        // 检查目录是否存在
         if (!fs.existsSync(downloadDir)) {
             return res.json({
                 success: true,
                 files: [],
+                folders: [],
                 total: 0,
                 directory: downloadDir,
                 message: '下载目录不存在'
             });
         }
 
-        // 读取文件列表
-        const files = fs.readdirSync(downloadDir)
-            .filter(filename => {
-                const ext = path.extname(filename).toLowerCase();
-                return ['.mp4', '.avi', '.mov', '.wmv', '.webm'].includes(ext);
-            })
-            .map(filename => {
-                const filepath = path.join(downloadDir, filename);
-                const stats = fs.statSync(filepath);
-                return {
-                    filename: filename,
-                    size: stats.size,
-                    sizeFormatted: formatFileSize(stats.size),
-                    createdAt: stats.birthtime.toISOString(),
-                    modifiedAt: stats.mtime.toISOString(),
-                    isVideo: true
-                };
-            })
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // 按创建时间倒序
-
-        console.log(`📁 扫描下载目录: 找到 ${files.length} 个视频文件`);
-
-        res.json({
+        const result = {
             success: true,
-            files: files,
-            total: files.length,
-            directory: downloadDir,
-            totalSize: files.reduce((sum, file) => sum + file.size, 0),
-            totalSizeFormatted: formatFileSize(files.reduce((sum, file) => sum + file.size, 0))
-        });
+            videos: [],
+            articles: [],
+            total: 0,
+            directory: downloadDir
+        };
+
+        // 1. 扫描video目录
+        const videoDir = path.join(downloadDir, 'video');
+        if (fs.existsSync(videoDir)) {
+            const videoFiles = fs.readdirSync(videoDir)
+                .filter(filename => {
+                    const ext = path.extname(filename).toLowerCase();
+                    return ['.mp4', '.avi', '.mov', '.wmv', '.webm'].includes(ext);
+                })
+                .map(filename => {
+                    const filepath = path.join(videoDir, filename);
+                    const stats = fs.statSync(filepath);
+                    return {
+                        type: 'video',
+                        filename: filename,
+                        size: stats.size,
+                        sizeFormatted: formatFileSize(stats.size),
+                        createdAt: stats.birthtime.toISOString(),
+                        modifiedAt: stats.mtime.toISOString(),
+                        relativePath: `video/${filename}`
+                    };
+                })
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+            result.videos = videoFiles;
+        }
+
+        // 2. 扫描article目录（音频+图片文件夹）
+        const articleDir = path.join(downloadDir, 'article');
+        if (fs.existsSync(articleDir)) {
+            const articleFolders = fs.readdirSync(articleDir)
+                .filter(item => {
+                    const itemPath = path.join(articleDir, item);
+                    return fs.statSync(itemPath).isDirectory();
+                })
+                .map(folderName => {
+                    const folderPath = path.join(articleDir, folderName);
+                    const stats = fs.statSync(folderPath);
+
+                    // 读取文件夹内容
+                    const files = fs.readdirSync(folderPath);
+                    const audioFiles = files.filter(f => f.endsWith('.mp3') || f.endsWith('.m4a') || f.endsWith('.aac'));
+                    const imageFiles = files.filter(f => {
+                        const ext = path.extname(f).toLowerCase();
+                        return ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext);
+                    });
+
+                    // 计算总大小
+                    let totalSize = 0;
+                    files.forEach(file => {
+                        try {
+                            const fileStats = fs.statSync(path.join(folderPath, file));
+                            totalSize += fileStats.size;
+                        } catch (e) {
+                            // 忽略错误
+                        }
+                    });
+
+                    // 读取元数据
+                    let metadata = null;
+                    const metadataPath = path.join(folderPath, 'metadata.json');
+                    if (fs.existsSync(metadataPath)) {
+                        try {
+                            metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+                        } catch (e) {
+                            // 忽略元数据读取错误
+                        }
+                    }
+
+                    return {
+                        type: 'audio_image_mix',
+                        folderName: folderName,
+                        totalFiles: files.length,
+                        audioCount: audioFiles.length,
+                        imageCount: imageFiles.length,
+                        totalSize: totalSize,
+                        totalSizeFormatted: formatFileSize(totalSize),
+                        createdAt: stats.birthtime.toISOString(),
+                        modifiedAt: stats.mtime.toISOString(),
+                        relativePath: `article/${folderName}`,
+                        files: files.map(file => ({
+                            name: file,
+                            type: audioFiles.includes(file) ? 'audio' :
+                                imageFiles.includes(file) ? 'image' : 'other'
+                        })),
+                        metadata: metadata
+                    };
+                })
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+            result.articles = articleFolders;
+        }
+
+        result.total = result.videos.length + result.articles.length;
+
+        console.log(`📁 扫描下载目录: ${result.videos.length} 个视频, ${result.articles.length} 个音频+图片文件夹`);
+
+        res.json(result);
 
     } catch (error) {
         console.error('❌ 获取下载文件列表失败:', error.message);
         res.status(500).json({
             success: false,
             error: error.message,
-            files: []
+            videos: [],
+            articles: []
         });
     }
 });
 
-// 获取下载服务状态
+// 🔧 新增：获取特定音频+图片文件夹详情API
+app.get('/api/download/douyin/article/:folderName', async (req, res) => {
+    try {
+        const { folderName } = req.params;
+        const folderPath = path.join('./downloads/douyin/article', folderName);
+
+        if (!fs.existsSync(folderPath)) {
+            return res.status(404).json({
+                success: false,
+                error: '文件夹不存在'
+            });
+        }
+
+        const files = fs.readdirSync(folderPath);
+        const fileDetails = [];
+
+        files.forEach(filename => {
+            try {
+                const filePath = path.join(folderPath, filename);
+                const stats = fs.statSync(filePath);
+                const ext = path.extname(filename).toLowerCase();
+
+                let fileType = 'other';
+                if (['.mp3', '.m4a', '.aac'].includes(ext)) {
+                    fileType = 'audio';
+                } else if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+                    fileType = 'image';
+                } else if (filename === 'metadata.json') {
+                    fileType = 'metadata';
+                }
+
+                fileDetails.push({
+                    filename: filename,
+                    type: fileType,
+                    size: stats.size,
+                    sizeFormatted: formatFileSize(stats.size),
+                    createdAt: stats.birthtime.toISOString(),
+                    modifiedAt: stats.mtime.toISOString()
+                });
+            } catch (e) {
+                // 忽略单个文件错误
+            }
+        });
+
+        // 读取元数据
+        let metadata = null;
+        const metadataPath = path.join(folderPath, 'metadata.json');
+        if (fs.existsSync(metadataPath)) {
+            try {
+                metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+            } catch (e) {
+                // 忽略元数据读取错误
+            }
+        }
+
+        const audioFiles = fileDetails.filter(f => f.type === 'audio');
+        const imageFiles = fileDetails.filter(f => f.type === 'image');
+        const totalSize = fileDetails.reduce((sum, f) => sum + f.size, 0);
+
+        res.json({
+            success: true,
+            folderName: folderName,
+            folderPath: folderPath,
+            totalFiles: fileDetails.length,
+            audioCount: audioFiles.length,
+            imageCount: imageFiles.length,
+            totalSize: totalSize,
+            totalSizeFormatted: formatFileSize(totalSize),
+            files: fileDetails,
+            metadata: metadata
+        });
+
+    } catch (error) {
+        console.error('❌ 获取文件夹详情失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 🔧 新增：删除下载内容API
+app.delete('/api/download/douyin/:type/:identifier', async (req, res) => {
+    try {
+        const { type, identifier } = req.params;
+
+        if (type === 'video') {
+            // 删除单个视频文件
+            const filePath = path.join('./downloads/douyin/video', identifier);
+
+            if (!fs.existsSync(filePath)) {
+                return res.status(404).json({
+                    success: false,
+                    error: '视频文件不存在'
+                });
+            }
+
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ 已删除视频文件: ${identifier}`);
+
+            res.json({
+                success: true,
+                message: `视频文件已删除: ${identifier}`,
+                type: 'video'
+            });
+
+        } else if (type === 'article') {
+            // 删除整个音频+图片文件夹
+            const folderPath = path.join('./downloads/douyin/article', identifier);
+
+            if (!fs.existsSync(folderPath)) {
+                return res.status(404).json({
+                    success: false,
+                    error: '文件夹不存在'
+                });
+            }
+
+            // 递归删除文件夹
+            fs.rmSync(folderPath, { recursive: true, force: true });
+            console.log(`🗑️ 已删除音频+图片文件夹: ${identifier}`);
+
+            res.json({
+                success: true,
+                message: `音频+图片文件夹已删除: ${identifier}`,
+                type: 'article'
+            });
+
+        } else {
+            res.status(400).json({
+                success: false,
+                error: '不支持的删除类型'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ 删除文件失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 🔧 更新下载服务状态API
 app.get('/api/download/status', async (req, res) => {
     try {
         // 检查浏览器服务状态
@@ -580,26 +830,50 @@ app.get('/api/download/status', async (req, res) => {
         }
 
         // 检查下载目录
-        const downloadDir = '/opt/work/endian/rpa-platform/downloads/douyin/';
-        const directoryExists = fs.existsSync(downloadDir);
-        let directorySize = 0;
-        let fileCount = 0;
+        const downloadDir = './downloads/douyin/';
+        const videoDir = path.join(downloadDir, 'video');
+        const articleDir = path.join(downloadDir, 'article');
 
-        if (directoryExists) {
-            try {
-                const files = fs.readdirSync(downloadDir);
-                fileCount = files.length;
-                directorySize = files.reduce((total, filename) => {
-                    const filePath = path.join(downloadDir, filename);
-                    try {
-                        return total + fs.statSync(filePath).size;
-                    } catch (error) {
-                        return total;
+        let videoCount = 0;
+        let articleCount = 0;
+        let totalSize = 0;
+
+        // 统计视频文件
+        if (fs.existsSync(videoDir)) {
+            const videoFiles = fs.readdirSync(videoDir);
+            videoCount = videoFiles.length;
+            videoFiles.forEach(file => {
+                try {
+                    const stats = fs.statSync(path.join(videoDir, file));
+                    totalSize += stats.size;
+                } catch (e) {
+                    // 忽略错误
+                }
+            });
+        }
+
+        // 统计音频+图片文件夹
+        if (fs.existsSync(articleDir)) {
+            const articleFolders = fs.readdirSync(articleDir);
+            articleCount = articleFolders.length;
+            articleFolders.forEach(folder => {
+                try {
+                    const folderPath = path.join(articleDir, folder);
+                    if (fs.statSync(folderPath).isDirectory()) {
+                        const files = fs.readdirSync(folderPath);
+                        files.forEach(file => {
+                            try {
+                                const stats = fs.statSync(path.join(folderPath, file));
+                                totalSize += stats.size;
+                            } catch (e) {
+                                // 忽略错误
+                            }
+                        });
                     }
-                }, 0);
-            } catch (error) {
-                console.warn('获取目录信息失败:', error.message);
-            }
+                } catch (e) {
+                    // 忽略错误
+                }
+            });
         }
 
         res.json({
@@ -607,19 +881,33 @@ app.get('/api/download/status', async (req, res) => {
             status: {
                 service: 'running',
                 browser: browserStatus,
-                directory: {
-                    path: downloadDir,
-                    exists: directoryExists,
-                    fileCount: fileCount,
-                    totalSize: directorySize,
-                    totalSizeFormatted: formatFileSize(directorySize)
-                }
+                directories: {
+                    video: {
+                        path: videoDir,
+                        exists: fs.existsSync(videoDir),
+                        fileCount: videoCount
+                    },
+                    article: {
+                        path: articleDir,
+                        exists: fs.existsSync(articleDir),
+                        folderCount: articleCount
+                    }
+                },
+                totalItems: videoCount + articleCount,
+                totalSize: totalSize,
+                totalSizeFormatted: formatFileSize(totalSize)
             },
             features: {
+                supportedContentTypes: ['real_video', 'audio_image_mix'],
                 supportedPlatforms: ['douyin'],
-                supportedFormats: ['mp4'],
+                supportedFormats: {
+                    video: ['mp4'],
+                    audio: ['mp3', 'm4a', 'aac'],
+                    image: ['jpg', 'jpeg', 'png', 'webp']
+                },
                 maxFileSize: '500MB',
-                concurrent: false
+                concurrent: false,
+                smartContentDetection: true
             },
             timestamp: new Date().toISOString()
         });
@@ -631,7 +919,6 @@ app.get('/api/download/status', async (req, res) => {
         });
     }
 });
-
 // 错误处理
 app.use((error, req, res, next) => {
     console.error('API错误:', error);
