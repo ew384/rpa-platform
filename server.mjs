@@ -69,7 +69,7 @@ const initializePublisher = () => {
     if (!publisher) {
         try {
             publisher = new UniversalPublisher({
-                electronApiUrl: 'http://localhost:9528',
+                electronApiUrl: 'http://127.0.0.1:9528',
                 enableConcurrency: true,
                 maxConcurrentPlatforms: 4,
                 timeout: 32100
@@ -131,7 +131,7 @@ app.get('/api/platforms', async (req, res) => {
 // 获取浏览器实例
 app.get('/api/browsers', async (req, res) => {
     try {
-        const response = await fetch('http://localhost:9528/api/browsers');
+        const response = await fetch('http://127.0.0.1:9528/api/browsers');
         const data = await response.json();
 
         if (data.success) {
@@ -443,7 +443,7 @@ app.post('/api/download/douyin', async (req, res) => {
 
         // 创建ChromeController和下载器
         const chromeController = new ChromeController({
-            electronApiUrl: 'http://localhost:9528',
+            electronApiUrl: 'http://127.0.0.1:9528',
             timeout: 30000
         });
 
@@ -821,7 +821,7 @@ app.get('/api/download/status', async (req, res) => {
         // 检查浏览器服务状态
         let browserStatus = 'unknown';
         try {
-            const response = await fetch('http://localhost:9528/api/health');
+            const response = await fetch('http://127.0.0.1:9528/api/health');
             if (response.ok) {
                 browserStatus = 'running';
             }
